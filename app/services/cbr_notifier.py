@@ -97,7 +97,7 @@ class CBRNotificationService:
             if not changes:
                 log.info("cbr_no_changes_to_notify", rates_count=len(rates))
                 return
-                
+
             timestamp = datetime.now().strftime("%H:%M")
             message = f"🚨 **КУРСЫ ЦБ НА ЗАВТРА ОПУБЛИКОВАНЫ!** {timestamp}\n\n"
             for change in changes:
@@ -111,34 +111,32 @@ class CBRNotificationService:
                 else:
                     trend = "📉"
                     direction = f"{diff:.4f}"
-                message += (
-                    f"{trend} **{currency}**: {old_rate} → **{new_rate}** ({direction})\n"
-                )
+                message += f"{trend} **{currency}**: {old_rate} → **{new_rate}** ({direction})\n"
             message += f"\n⏰ *Обновлено в {timestamp}*"
-            
+
             log.info("cbr_sending_notifications", subscribers_count=len(self.subscribers), changes_count=len(changes))
-            
+
             failed_users = []
             successful_sends = 0
             for user_id in self.subscribers:
                 try:
-                    await self.bot.send_message(
-                        user_id, escape_markdown(message), parse_mode="Markdown"
-                    )
+                    await self.bot.send_message(user_id, escape_markdown(message), parse_mode="Markdown")
                     successful_sends += 1
                 except Exception as e:
                     log.warning("cbr_notify_failed", user_id=user_id, error=str(e))
                     failed_users.append(user_id)
-                    
+
             # Удаляем неудачных пользователей из подписки
             for user_id in failed_users:
                 await self.unsubscribe_user(user_id)
-                
-            log.info("cbr_notifications_sent", 
-                    successful=successful_sends, 
-                    failed=len(failed_users), 
-                    total_subscribers=len(self.subscribers))
-                    
+
+            log.info(
+                "cbr_notifications_sent",
+                successful=successful_sends,
+                failed=len(failed_users),
+                total_subscribers=len(self.subscribers),
+            )
+
         except Exception as e:
             log.error("cbr_notify_all_failed", error=str(e))
             raise

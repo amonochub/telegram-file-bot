@@ -20,9 +20,7 @@ async def cmd_check(msg: Message):
         return
     doc = msg.reply_to_message.document
     try:
-        tmp = tempfile.NamedTemporaryFile(
-            delete=False, suffix=pathlib.Path(doc.file_name or "").suffix
-        )
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=pathlib.Path(doc.file_name or "").suffix)
         await msg.bot.download(file=doc, destination=tmp.name)
         text = await run_ocr(tmp.name)
         lang = detect_language(text)

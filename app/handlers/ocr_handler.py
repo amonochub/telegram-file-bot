@@ -54,6 +54,7 @@ async def handle_pdf_document(message: Message):
         logger.error("Error handling PDF document", error=str(e))
         await message.reply(f"❌ Ошибка обработки PDF: {e}")
 
+
 # --- объявляем атрибут для mypy после определения функции ---
 from typing import Any, Dict
 
@@ -77,9 +78,7 @@ async def process_pdf_ocr(callback_query):
             file_key = key
             break
     if not file_key:
-        await callback_query.message.edit_text(
-            "❌ Файл не найден. Попробуйте загрузить заново."
-        )
+        await callback_query.message.edit_text("❌ Файл не найден. Попробуйте загрузить заново.")
         return
     file_info = handle_pdf_document.temp_files[file_key]
     try:
@@ -87,16 +86,10 @@ async def process_pdf_ocr(callback_query):
         file_telegram_info = await callback_query.bot.get_file(file_info["file_id"])
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_input:
             temp_input_path = temp_input.name
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix="_ocr.pdf"
-        ) as temp_output:
+        with tempfile.NamedTemporaryFile(delete=False, suffix="_ocr.pdf") as temp_output:
             temp_output_path = temp_output.name
-        await callback_query.bot.download_file(
-            file_telegram_info.file_path, temp_input_path
-        )
-        ocr_result = await ocr_service.process_pdf_with_ocr(
-            temp_input_path, temp_output_path
-        )
+        await callback_query.bot.download_file(file_telegram_info.file_path, temp_input_path)
+        ocr_result = await ocr_service.process_pdf_with_ocr(temp_input_path, temp_output_path)
         if ocr_result["success"]:
             ocr_filename = file_info["file_name"].replace(".pdf", "_ocr.pdf")
             remote_dir = f"{settings.upload_dir}/{user_id}/ocr_documents"
@@ -139,7 +132,8 @@ async def process_pdf_ocr(callback_query):
             translated = ""
             if lang == "en" and settings.gemini_api_key:
                 try:
-                    import asyncio, functools
+                    import asyncio
+                    import functools
                     import google.generativeai as genai
 
                     genai.configure(api_key=settings.gemini_api_key)
@@ -153,9 +147,7 @@ async def process_pdf_ocr(callback_query):
                         response = model.generate_content(prompt)
                         return response.text.strip()
 
-                    translated = await asyncio.get_event_loop().run_in_executor(
-                        None, _translate
-                    )
+                    translated = await asyncio.get_event_loop().run_in_executor(None, _translate)
                 except Exception as e:  # pragma: no cover
                     logger.warning("translate_failed", err=str(e))
 
@@ -176,14 +168,10 @@ async def process_pdf_ocr(callback_query):
             builder.button(text="📋 Весь текст", callback_data=f"show_full_text:{file_key}")
             builder.adjust(1)
 
-            await callback_query.message.edit_text(
-                result_text, reply_markup=builder.as_markup(), parse_mode="Markdown"
-            )
+            await callback_query.message.edit_text(result_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
             await callback_query.message.answer("✅ Текст успешно извлечён!", reply_markup=main_menu())
         else:
-            await callback_query.message.edit_text(
-                "❌ Ошибка загрузки обработанного файла"
-            )
+            await callback_query.message.edit_text("❌ Ошибка загрузки обработанного файла")
             await callback_query.message.answer(f"❌ Ошибка OCR: {ocr_result['error']}", reply_markup=main_menu())
         for temp_path in [temp_input_path, temp_output_path]:
             if os.path.exists(temp_path):
@@ -214,9 +202,7 @@ async def process_pdf_upload(callback_query):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_path = temp_file.name
         await callback_query.bot.download_file(file_telegram_info.file_path, temp_path)
-        remote_path = (
-            f"{settings.upload_dir}/{user_id}/documents/{file_info['file_name']}"
-        )
+        remote_path = f"{settings.upload_dir}/{user_id}/documents/{file_info['file_name']}"
         uploaded_path = await yandex_service.upload_file(temp_path, remote_path)
         if uploaded_path:
             await callback_query.message.edit_text(
