@@ -16,7 +16,17 @@ class Settings(BaseSettings):
     
     # Bot
     bot_token: str = Field(..., validation_alias="BOT_TOKEN")
-    allowed_user_id: Optional[int] = Field(None, validation_alias="ALLOWED_USER_ID")
+    allowed_user_id: Optional[str] = Field(None, validation_alias="ALLOWED_USER_ID")
+    
+    @property
+    def allowed_user_id_int(self) -> Optional[int]:
+        """Возвращает allowed_user_id как целое число или None"""
+        if not self.allowed_user_id or self.allowed_user_id.strip() == "":
+            return None
+        try:
+            return int(self.allowed_user_id.strip())
+        except (ValueError, TypeError):
+            return None
     
     # Yandex.Disk
     yandex_disk_token: Optional[str] = Field(None, validation_alias="YANDEX_DISK_TOKEN")
