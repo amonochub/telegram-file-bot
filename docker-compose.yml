@@ -7,6 +7,7 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - YANDEX_DISK_TOKEN=${YANDEX_DISK_TOKEN}
+      - ALLOWED_USER_ID=${ALLOWED_USER_ID}
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=INFO
     depends_on:

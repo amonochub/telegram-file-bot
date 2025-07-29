@@ -1,5 +1,5 @@
 
-# Используем официальный образ Python 3.10
+# Используем официальный образ Python 3.11
 FROM python:3.11-slim
 
 # Установка системных зависимостей
@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     ghostscript \
     && rm -rf /var/lib/apt/lists/*
+
+# Создание непривилегированного пользователя
+RUN groupadd -r botuser && useradd -r -g botuser botuser
 
 # Установка рабочей директории
 WORKDIR /app
@@ -23,8 +26,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование исходного кода
 COPY . .
 
-# Создание директории для логов
-RUN mkdir -p logs
+# Создание директорий и установка прав
+RUN mkdir -p logs temp && \
+    chown -R botuser:botuser /app
+
+# Переключение на непривилегированного пользователя
+USER botuser
 
 # Переменные окружения
 ENV PYTHONPATH=/app
