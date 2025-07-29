@@ -20,25 +20,22 @@ WORKDIR /app
 # Копирование файлов зависимостей
 COPY requirements.txt .
 
-# Создание директории для pip cache и установка прав
-RUN mkdir -p /app/.cache/pip && chown -R botuser:botuser /app
+# Установка Python зависимостей от root (это нормально для сборки образа)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копирование исходного кода
+COPY . .
+
+# Создание директорий и установка прав
+RUN mkdir -p logs temp && \
+    chown -R botuser:botuser /app
 
 # Переключение на непривилегированного пользователя
 USER botuser
 
-# Установка Python зависимостей от имени botuser в локальную директорию
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Копирование исходного кода
-COPY --chown=botuser:botuser . .
-
-# Создание директорий
-RUN mkdir -p logs temp
-
 # Переменные окружения
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV PATH="/home/botuser/.local/bin:$PATH"
 
 # Команда запуска
 CMD ["python", "-m", "app.main"]
