@@ -21,17 +21,15 @@ log = structlog.get_logger(__name__)
 # --- Настройки ---
 from app.config import settings
 from app.keyboards.menu import main_menu
+from app.services.currency_calculator import default_calculator
+from app.utils.error_handling import handle_errors, ValidationError
+from app.constants.messages import ERROR_INVALID_INPUT, SUCCESS_CALCULATION_COMPLETED
 
 router = Router()
 
-celery_app = Celery("calc_tasks", broker=settings.redis_url, backend=settings.redis_url)
-
-# (legacy constants retained for compatibility purposes)
-CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}"
-
-
-# --- Кэшированные курсы ЦБ ---
+# Legacy compatibility - keeping these for backward compatibility
 from app.services.rates_cache import get_rate as cached_cbr_rate
+CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}"
 
 
 async def fetch_cbr_rate(currency: str, for_date: dt.date) -> decimal.Decimal | None:  # noqa: D401

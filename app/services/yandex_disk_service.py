@@ -9,6 +9,7 @@ Key features:
 - Connection validation
 - Error handling and logging
 - Path management utilities
+- Performance monitoring
 
 Usage:
     service = YandexDiskService(token)
@@ -22,6 +23,8 @@ from typing import Any, Dict, List, Optional
 
 import yadisk
 from yadisk.exceptions import YaDiskError
+
+from app.utils.performance import monitor_performance
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,7 @@ class YandexDiskService:
     def _remove(self, remote_path: str, permanently: bool) -> None:
         self.client.remove(remote_path, permanently)
 
+    @monitor_performance("yandex_disk_connection_check", log_slow_threshold=5.0)
     async def check_connection(self) -> bool:
         try:
             loop = asyncio.get_event_loop()
@@ -57,6 +61,7 @@ class YandexDiskService:
             self.logger.error(f"Ошибка подключения к Яндекс.Диску: {e}")
             return False
 
+    @monitor_performance("yandex_disk_upload", log_slow_threshold=10.0)
     async def upload_file(self, local_path: str, remote_path: str) -> Optional[str]:
         try:
             if not os.path.exists(local_path):
