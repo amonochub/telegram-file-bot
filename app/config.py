@@ -1,12 +1,14 @@
 """
-Конфигурация приложения
+Конфигурация приложения с валидацией и окружением.
 """
-
 import os
-from typing import Optional, List, Union
-from pydantic import Field
-from pydantic_settings import BaseSettings
-import logging
+from typing import List, Optional
+
+import structlog
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+log = structlog.get_logger(__name__)
 
 # Константы для Яндекс.Диска
 YANDEX_ROOT_PATH = os.getenv("YANDEX_ROOT_PATH", "disk:/1-Sh23SGxNjxYQ")
@@ -14,7 +16,14 @@ USER_FILES_DIR = YANDEX_ROOT_PATH
 
 
 class Settings(BaseSettings):
-    """Настройки приложения"""
+    """Настройки приложения с валидацией"""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     # Bot
     bot_token: str = Field(..., validation_alias="BOT_TOKEN")
@@ -69,6 +78,67 @@ class Settings(BaseSettings):
     # Yandex.Disk root path
     yandex_root_path: str = Field("disk:/1-Sh23SGxNjxYQ", validation_alias="YANDEX_ROOT_PATH")
 
+    @field_validator("bot_token")
+    @classmethod
+    def validate_bot_token(cls, v: str) -> str:
+        """Validate bot token format."""
+        if not v or len(v) < 45:
+            raise ValueError("Bot token must be at least 45 characters")
+        if ":" not in v:
+            raise ValueError("Bot token must contain ':'")
+        return v
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        """Validate log level."""
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if v.upper() not in valid_levels:
+            raise ValueError(f"Log level must be one of: {valid_levels}")
+        return v.upper()
+
+    @field_validator("max_file_size")
+    @classmethod
+    def validate_file_size(cls, v: int) -> int:
+        """Validate max file size."""
+        if v <= 0:
+            raise ValueError("Max file size must be positive")
+        if v > 1_000_000_000:  # 1GB
+            raise ValueError("Max file size cannot exceed 1GB")
+        return v
+
+    @property
+    def is_development(self) -> bool:
+        """Check if running in development mode."""
+        return self.log_level == "DEBUG"
+
+    def validate_configuration(self) -> None:
+        """Validate the entire configuration and log warnings."""
+        warnings = []
+
+        # Check Yandex.Disk token
+        if not self.yandex_disk_token:
+            warnings.append("Yandex.Disk token not set - file operations will be disabled")
+
+        # Check allowed users
+        if not self.allowed_user_ids:
+            warnings.append("No allowed users configured - bot is open to all users")
+
+        # Log warnings
+        for warning in warnings:
+            log.warning("Configuration warning", message=warning)
+
+
+def create_settings() -> Settings:
+    """Create and validate settings."""
+    try:
+        settings = Settings()
+        settings.validate_configuration()
+        return settings
+    except Exception as e:
+        log.error("Failed to load configuration", error=str(e))
+        raise
+
 
 # Создаем глобальный экземпляр настроек
-settings = Settings()
+settings = create_settings()

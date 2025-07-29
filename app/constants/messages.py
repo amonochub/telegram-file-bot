@@ -73,3 +73,21 @@ LOG_CLIENT_CALC_MENU_TRIGGERED = "client_calc_menu triggered"
 LOG_CBR_RATES_MENU_TRIGGERED = "cbr_rates_menu triggered"
 LOG_HELP_BUTTON_TRIGGERED = "help_button triggered"
 LOG_UNHANDLED_MESSAGE = "Неопознанное сообщение"
+
+# Error messages
+ERROR_GENERIC = "❌ Произошла ошибка. Попробуйте позже."
+ERROR_NETWORK = "🌐 Ошибка сети. Проверьте подключение к интернету."
+ERROR_INVALID_INPUT = "⚠️ Некорректные данные. Проверьте ввод."
+ERROR_FILE_TOO_LARGE = "📁 Файл слишком большой."
+ERROR_UNSUPPORTED_FORMAT = "❌ Неподдерживаемый формат файла."
+ERROR_YANDEX_DISK = "☁️ Ошибка при работе с Яндекс.Диском."
+
+# Success messages
+SUCCESS_FILE_UPLOADED = "✅ Файл успешно загружен!"
+SUCCESS_OCR_COMPLETED = "✅ Распознавание текста завершено!"
+SUCCESS_CALCULATION_COMPLETED = "✅ Расчёт выполнен!"
+
+# Info messages
+INFO_PROCESSING = "⏳ Обрабатываем запрос..."
+INFO_UPLOADING = "📤 Загружаем файл..."
+INFO_OCR_PROCESSING = "🔍 Распознаём текст..."

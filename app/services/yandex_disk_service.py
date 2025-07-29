@@ -1,3 +1,20 @@
+"""
+Yandex.Disk integration service.
+
+This module provides asynchronous interface for Yandex.Disk operations
+including file upload, download, listing, and management.
+
+Key features:
+- Async file operations using executor
+- Connection validation
+- Error handling and logging
+- Path management utilities
+
+Usage:
+    service = YandexDiskService(token)
+    await service.upload_file(local_path, remote_path)
+"""
+
 import asyncio
 import logging
 import os

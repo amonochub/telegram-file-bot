@@ -100,17 +100,22 @@ if "aiohttp" in sys.modules:
             return _Resp()
     ahttp.ClientSession = lambda *a, **kw: _Session()
     ahttp.ClientTimeout = _Dummy
+    
+    # Add ClientError for tests
+    class _ClientError(Exception):
+        pass
+    ahttp.ClientError = _ClientError
 
 # aiofiles
 if "aiofiles" in sys.modules:
     af = sys.modules["aiofiles"]
-    async def open(*a, **kw):
+    async def aio_open(*a, **kw):
         class _F(_Dummy):
             async def __aenter__(self): return self
             async def __aexit__(self, exc_type, exc, tb): return False
             async def read(self): return ""
         return _F()
-    af.open = open
+    af.open = aio_open
 
 # Levenshtein
 if "Levenshtein" in sys.modules:
@@ -291,10 +296,16 @@ if "yadisk" in sys.modules:
 if "PIL" in sys.modules:
     pil = sys.modules["PIL"]
     if not hasattr(pil, "Image"):
-        pil.Image = _Dummy
+        class _Image:
+            class Image:
+                pass
+        pil.Image = _Image
 else:
     pil = _stub("PIL")
-    pil.Image = _Dummy
+    class _Image:
+        class Image:
+            pass
+    pil.Image = _Image
 
 # ensure Celery attribute exists after stub
 if "celery" in sys.modules:
@@ -307,4 +318,68 @@ if "celery" in sys.modules:
                 return deco
             def send_task(self, *a, **kw):
                 pass
-        cel.Celery = _Cel 
+        cel.Celery = _Cel
+
+# docx module with Document class  
+if "docx" in sys.modules:
+    docx_mod = sys.modules["docx"]
+    if not hasattr(docx_mod, "Document"):
+        class _Document(_Dummy):
+            def __init__(self, *args, **kwargs):
+                pass
+            
+            def add_paragraph(self, text=""):
+                return _Dummy()
+            
+            def save(self, path):
+                # Create an empty file to simulate saving
+                import builtins
+                with builtins.open(path, 'wb') as f:
+                    f.write(b'fake docx content')
+        
+        docx_mod.Document = _Document
+
+# fitz (PyMuPDF) module 
+if "fitz" in sys.modules:
+    fitz_mod = sys.modules["fitz"]
+    if not hasattr(fitz_mod, "open"):
+        class _FitzDoc(_Dummy):
+            def __init__(self, *args, **kwargs):
+                pass
+            
+            def new_page(self):
+                return _Dummy()
+            
+            def save(self, path):
+                # Create an empty file to simulate saving
+                import builtins
+                with builtins.open(path, 'wb') as f:
+                    f.write(b'fake pdf content')
+                    
+            def close(self):
+                pass
+                
+            def load_page(self, page_num):
+                page = _Dummy()
+                page.get_text = lambda: "Sample text"
+                return page
+                
+            @property 
+            def page_count(self):
+                return 1
+        
+        def _fitz_open(path=None):
+            return _FitzDoc()
+            
+        fitz_mod.open = _fitz_open
+
+# ocrmypdf module
+if "ocrmypdf" in sys.modules:
+    ocr_mod = sys.modules["ocrmypdf"]
+    if not hasattr(ocr_mod, "ocr"):
+        def _ocr(input_file, output_file, **kwargs):
+            # Simulate OCR processing by copying input to output
+            import shutil
+            shutil.copy2(input_file, output_file)
+            
+        ocr_mod.ocr = _ocr 
