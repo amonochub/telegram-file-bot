@@ -186,7 +186,8 @@ async def input_commission(msg: Message, state: FSMContext):
     if data.get("for_tomorrow"):
         tomorrow = dt.date.today() + dt.timedelta(days=1)
         log.info("calc_tomorrow_request", tomorrow=str(tomorrow), currency=data["currency"])
-        # Сначала пробуем получить завтрашний курс с сетевого запроса
+        
+        # Сначала пробуем получить завтрашний курс
         rate = await safe_fetch_rate(data["currency"], tomorrow, requested_tomorrow=True)
         if rate:
             log.info("calc_tomorrow_rate_found", rate=str(rate), currency=data["currency"])
@@ -196,35 +197,26 @@ async def input_commission(msg: Message, state: FSMContext):
             )
             return await state.clear()
         
-        # Если завтрашний курс недоступен, пробуем сегодняшний
+        # Если завтрашний курс недоступен, сообщаем об этом
         log.info("calc_tomorrow_rate_not_found", currency=data["currency"])
-        today = dt.date.today()
-        rate = await safe_fetch_rate(data["currency"], today)
-        if rate is None:
-            # Если и сегодняшний недоступен, пробуем вчерашний
-            yesterday = today - dt.timedelta(days=1)
-            rate = await safe_fetch_rate(data["currency"], yesterday)
-            if rate is None:
-                await msg.answer(
-                    "Курс ЦБ на завтра пока не опубликован 🙈\n"
-                    "Я пришлю расчёт сразу, как только он появится!",
-                    reply_markup=main_menu(),
-                )
-                await state.set_state(CalcStates.waiting_tomorrow_rate)
-                celery_app.send_task(
-                    "calc_tasks.wait_rate_and_notify",
-                    kwargs={
-                        "chat_id": msg.chat.id,
-                        "currency": data["currency"],
-                        "amount": str(data["amount"]),
-                        "commission": str(pct),
-                    },
-                )
-                return
-            await msg.answer("⚠️ Используется курс за последний рабочий день.")
-        else:
-            await msg.answer("⚠️ Используется сегодняшний курс (завтрашний пока не опубликован).")
+        await msg.answer(
+            "Курс ЦБ на завтра пока не опубликован 🙈\n"
+            "Я пришлю расчёт сразу, как только он появится!",
+            reply_markup=main_menu(),
+        )
+        await state.set_state(CalcStates.waiting_tomorrow_rate)
+        celery_app.send_task(
+            "calc_tasks.wait_rate_and_notify",
+            kwargs={
+                "chat_id": msg.chat.id,
+                "currency": data["currency"],
+                "amount": str(data["amount"]),
+                "commission": str(pct),
+            },
+        )
+        return
 
+    # Расчет для сегодня
     today = dt.date.today()
     rate = await safe_fetch_rate(data["currency"], today)
     if rate is None:
@@ -235,6 +227,7 @@ async def input_commission(msg: Message, state: FSMContext):
             await msg.answer("Курс пока не доступен. Попробуйте позже.")
             return await state.clear()
         await msg.answer("⚠️ Используется курс за последний рабочий день.")
+    
     await msg.answer(
         result_message(data["currency"], rate, data["amount"], pct),
         reply_markup=main_menu(),
