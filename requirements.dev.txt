@@ -1,0 +1,7 @@
+pytest
+pytest-asyncio
+mypy
+ruff
+black
+pre-commit 
+types-aiofiles 
