@@ -29,9 +29,7 @@ class AutocompleteService:
         await self.redis.zadd(user_key, {company_name: datetime.now().timestamp()})
         await self.redis.expire(user_key, 86400 * 90)
 
-    async def get_company_suggestions(
-        self, partial: str, user_id: int, limit: int = 10
-    ) -> List[str]:
+    async def get_company_suggestions(self, partial: str, user_id: int, limit: int = 10) -> List[str]:
         if self.redis is None:
             await self.connect()
         assert self.redis is not None
@@ -53,9 +51,7 @@ class AutocompleteService:
                 suggestions.append(company)
         return suggestions[:limit]
 
-    async def get_next_document_number(
-        self, company1: str, company2: str, doctype: str
-    ) -> str:
+    async def get_next_document_number(self, company1: str, company2: str, doctype: str) -> str:
         if self.redis is None:
             await self.connect()
         assert self.redis is not None
@@ -69,9 +65,7 @@ class AutocompleteService:
         await self.redis.set(key, next_number)  # type: ignore[misc]
         return next_number
 
-    async def get_recent_counterparties(
-        self, user_id: int, limit: int = 10
-    ) -> List[Dict]:
+    async def get_recent_counterparties(self, user_id: int, limit: int = 10) -> List[Dict]:
         if self.redis is None:
             await self.connect()
         assert self.redis is not None

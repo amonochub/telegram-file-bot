@@ -23,6 +23,7 @@ yandex_service = YandexDiskService(settings.yandex_disk_token)
 path_cache = {}
 id_counter = 1
 
+
 def get_path_id(path: str) -> str:
     """Получить короткий ID для пути"""
     global id_counter
@@ -31,12 +32,14 @@ def get_path_id(path: str) -> str:
         id_counter += 1
     return path_cache[path]
 
+
 def get_path_by_id(path_id: str) -> str:
     """Получить путь по ID"""
     for path, pid in path_cache.items():
         if pid == path_id:
             return path
     return ""
+
 
 # Проверяем подключение к Яндекс.Диску при запуске
 async def check_yandex_connection():
@@ -50,6 +53,7 @@ async def check_yandex_connection():
     except Exception as e:
         print(f"[DEBUG] Yandex.Disk connection error: {e}")
         return False
+
 
 PAGE_SIZE = 20
 
@@ -70,14 +74,14 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
     try:
         logger.info("show_directory_called", path=path, user_id=message.from_user.id)
         print(f"[DEBUG] show_directory called for path: {path}")
-        
+
         # Проверяем доступность Яндекс.Диска
         try:
             # Получаем список файлов без создания папки
             files_list = await yandex_service.get_files_list(path)
             logger.info("yadisk_files_list", files_list=files_list)
             print(f"[DEBUG] files_list: {files_list}")
-                
+
             if not files_list:
                 text = f"📁 Папка пуста: {path}"
                 if edit:
@@ -101,37 +105,34 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
             else:
                 await message.answer(text, parse_mode="HTML")
             return
-        
+
         builder = InlineKeyboardBuilder()
         user_root = USER_FILES_DIR
         if path != user_root and path.startswith(user_root):
             parent_path = os.path.dirname(path.rstrip("/"))
             builder.button(text="⬅️ Назад", callback_data=f"browse:{get_path_id(parent_path)}")
-        
+
         # Разделяем папки и файлы
         folders = [f for f in files_list if f["type"] == "dir"]
         files = [f for f in files_list if f["type"] == "file"]
-        
+
         # Объединяем папки и файлы в один список для правильной пагинации
         all_items = []
         for folder in folders:
             all_items.append({"type": "folder", "data": folder})
         for file in files:
             all_items.append({"type": "file", "data": file})
-        
+
         # Применяем пагинацию
         start = page * PAGE_SIZE
         end = start + PAGE_SIZE
         page_items = all_items[start:end]
-        
+
         # Создаем кнопки для элементов на текущей странице
         for item in page_items:
             if item["type"] == "folder":
                 folder = item["data"]
-                builder.button(
-                    text=f"📁 {folder['name']}", 
-                    callback_data=f"browse:{get_path_id(folder['path'])}"
-                )
+                builder.button(text=f"📁 {folder['name']}", callback_data=f"browse:{get_path_id(folder['path'])}")
             elif item["type"] == "file":
                 file = item["data"]
                 file_size = yandex_service.format_file_size(file["size"])
@@ -147,34 +148,27 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
             pag_row = []
             if page > 0:
                 pag_row.append(
-                    InlineKeyboardButton(text="⬅️", callback_data=f"browse_page:{get_path_id(path)}:{page-1}")
+                    InlineKeyboardButton(text="⬅️", callback_data=f"browse_page:{get_path_id(path)}:{page - 1}")
                 )
-            pag_row.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="noop"))
+            pag_row.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
             if page < total_pages - 1:
                 pag_row.append(
-                    InlineKeyboardButton(text="➡️", callback_data=f"browse_page:{get_path_id(path)}:{page+1}")
+                    InlineKeyboardButton(text="➡️", callback_data=f"browse_page:{get_path_id(path)}:{page + 1}")
                 )
             builder.row(*pag_row)
 
         # button to create folder
         builder.button(text="➕ Новая папка", callback_data=f"browse_mkdir:{get_path_id(path)}")
         builder.adjust(1)
-        text = (
-            f"📁 <b>{path}</b>\n\n"
-            f"📊 Папок: {len(folders)}  Файлов: {len(files)}  (стр. {page+1}/{total_pages})"
-        )
+        text = f"📁 <b>{path}</b>\n\n📊 Папок: {len(folders)}  Файлов: {len(files)}  (стр. {page + 1}/{total_pages})"
         if edit:
-            await message.edit_text(
-                text, reply_markup=builder.as_markup(), parse_mode="HTML"
-            )
+            await message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
         else:
-            await message.answer(
-                text, reply_markup=builder.as_markup(), parse_mode="HTML"
-            )
+            await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
     except Exception as e:
         logger.error("Error showing directory", error=str(e), path=path)
         print(f"[DEBUG] Exception in show_directory: {e}")
-        
+
         # Более информативное сообщение об ошибке
         if "Forbidden" in str(e) or "403" in str(e):
             error_text = "❌ Ошибка доступа к Яндекс.Диску. Проверьте токен и права доступа."
@@ -182,7 +176,7 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
             error_text = "❌ Папка не найдена на Яндекс.Диске."
         else:
             error_text = f"❌ Ошибка загрузки папки: {e}"
-        
+
         if edit:
             await message.edit_text(error_text, parse_mode="HTML")
         else:
@@ -232,37 +226,35 @@ async def browse_mkdir_create(msg: Message, state: FSMContext):
 async def download_callback(callback: CallbackQuery):
     file_path = get_path_by_id(callback.data.replace("download_file:", ""))
     file_name = os.path.basename(file_path)
-    
+
     try:
         # Показываем сообщение о загрузке
         loading_msg = await callback.message.answer("⏳ Скачиваю файл...")
-        
+
         # Скачиваем файл с Яндекс.Диска во временную папку
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file_name}") as temp_file:
             temp_path = temp_file.name
-        
+
         # Скачиваем файл
         success = await yandex_service.download_file(file_path, temp_path)
-        
+
         if success and os.path.exists(temp_path):
             # Отправляем файл в Telegram
             from aiogram.types import FSInputFile
+
             await callback.message.answer_document(
-                FSInputFile(temp_path, filename=file_name),
-                caption=f"📥 Файл: {file_name}"
+                FSInputFile(temp_path, filename=file_name), caption=f"📥 Файл: {file_name}"
             )
-            
+
             # Удаляем временный файл
             os.unlink(temp_path)
-            
+
             # Удаляем сообщение о загрузке
             await loading_msg.delete()
         else:
             await loading_msg.edit_text(f"❌ Не удалось скачать файл {file_name}")
-            
+
     except Exception as e:
         logger.error(f"Ошибка скачивания файла {file_path}: {e}")
-        await callback.message.answer(
-            f"❌ Ошибка при скачивании файла {file_name}: {str(e)}"
-        )
+        await callback.message.answer(f"❌ Ошибка при скачивании файла {file_name}: {str(e)}")
     await callback.answer()

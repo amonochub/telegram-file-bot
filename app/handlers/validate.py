@@ -28,9 +28,7 @@ async def run_validation(msg: Message):
     with tempfile.NamedTemporaryFile(suffix=doc.file_name[-5:], delete=False) as tmp:
         await msg.bot.download(doc, destination=tmp.name)
 
-    missings, patched_path = await asyncio.get_running_loop().run_in_executor(
-        None, validate_doc, tmp.name
-    )
+    missings, patched_path = await asyncio.get_running_loop().run_in_executor(None, validate_doc, tmp.name)
 
     if not missings:
         await msg.answer("Ура! ❣️ Ошибок не найдено.")

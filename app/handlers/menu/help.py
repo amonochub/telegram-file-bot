@@ -1,6 +1,7 @@
 """
 Обработчики для справки и помощи
 """
+
 import structlog
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -17,11 +18,11 @@ log = structlog.get_logger()
 async def help_button(message: Message, state: FSMContext) -> None:
     """
     Обработчик кнопки "ℹ️ Помощь"
-    
+
     Args:
         message: Сообщение от пользователя
         state: Контекст конечного автомата
     """
     log.info(LOG_HELP_BUTTON_TRIGGERED, text=message.text, user_id=message.from_user.id)
     await state.clear()
-    await message.answer(HELP_TEXT, reply_markup=main_menu()) 
+    await message.answer(HELP_TEXT, reply_markup=main_menu())

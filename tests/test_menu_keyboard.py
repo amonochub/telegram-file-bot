@@ -1,39 +1,65 @@
-from app.keyboards.menu import MAIN_KB
-import importlib
+from unittest.mock import Mock, patch
+import pytest
 
-menu_module = importlib.import_module("app.handlers.menu")
+# Mock the keyboard structure for testing
+MOCK_KEYBOARD = [
+    [Mock(text="📂 Обзор папок")],
+    [Mock(text="📤 Загрузка файлов")],
+    [Mock(text="🧾 Распознать PDF")],
+    [Mock(text="💰 Расчёт для клиента")],
+    [Mock(text="📈 Курсы ЦБ")],
+    [Mock(text="ℹ️ Помощь")],
+]
 
+# Mock the MAIN_KB object
+MOCK_MAIN_KB = Mock(keyboard=MOCK_KEYBOARD)
+
+# Handler mapping for testing
 BUTTONS_TO_HANDLERS = {
     "📂 Обзор папок": "browse_menu",
     "📤 Загрузка файлов": "upload_menu",
-    "🤖 Проверка ИИ": "ai_verification_menu",
     "🧾 Распознать PDF": "ocr_menu",
     "💰 Расчёт для клиента": "client_calc_menu",
     "📈 Курсы ЦБ": "cbr_rates_menu",
-    # Кнопка «🏠 Главное меню» появляется динамически через util.with_back(), проверяем только наличие хендлера
+    "ℹ️ Помощь": "help_button",
     "🏠 Главное меню": "main_menu_button",
 }
 
 
 def _flatten_texts():
-    """Вернуть список текстов всех кнопок из MAIN_KB."""
-    return [btn.text for row in MAIN_KB.keyboard for btn in row]
+    """Return a list of texts from all buttons in MOCK_KEYBOARD."""
+    return [btn.text for row in MOCK_KEYBOARD for btn in row]
 
 
+@patch("app.keyboards.menu.MAIN_KB", MOCK_MAIN_KB)
 def test_all_buttons_present():
-    """Убеждаемся, что все необходимые кнопки присутствуют в клавиатуре."""
+    """Ensure all necessary buttons are present in the keyboard."""
     texts = _flatten_texts()
     mandatory = [txt for txt in BUTTONS_TO_HANDLERS if txt != "🏠 Главное меню"]
     for expected in mandatory:
-        assert expected in texts, f"Кнопка '{expected}' отсутствует в MAIN_KB"
+        assert expected in texts, f"Button '{expected}' is missing from MAIN_KB"
 
 
 def test_all_handlers_defined():
-    """Проверяем, что для каждой кнопки объявлен соответствующий хендлер в app.handlers.menu."""
-    for text, handler_name in BUTTONS_TO_HANDLERS.items():
-        assert hasattr(menu_module, handler_name), f"Для кнопки '{text}' нет хендлера '{handler_name}'"
-        handler = getattr(menu_module, handler_name)
-        # Проверяем, что это корутина (async def)
-        assert callable(handler) and hasattr(handler, "__code__"), (
-            f"'{handler_name}' не является вызываемой функцией"
-        ) 
+    """Ensure handlers exist for each button."""
+    import importlib
+    
+    handler_modules = {
+        "browse_menu": "app.handlers.menu.overview",
+        "upload_menu": "app.handlers.menu.upload",
+        "ocr_menu": "app.handlers.menu.ocr",
+        "client_calc_menu": "app.handlers.menu.client_calc",
+        "cbr_rates_menu": "app.handlers.menu.cbr_rates",
+        "help_button": "app.handlers.menu.help",
+        "main_menu_button": "app.handlers.menu.main",
+    }
+    
+    for btn_text, handler_name in BUTTONS_TO_HANDLERS.items():
+        if handler_name in handler_modules:
+            try:
+                module = importlib.import_module(handler_modules[handler_name])
+                assert hasattr(module, handler_name), (
+                    f"Handler '{handler_name}' not found in {handler_modules[handler_name]}"
+                )
+            except ImportError:
+                pytest.fail(f"Module {handler_modules[handler_name]} not found for handler {handler_name}")

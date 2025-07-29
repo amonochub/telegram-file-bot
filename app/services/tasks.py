@@ -27,22 +27,16 @@ def validate_task(file_path: str, user_id: int, chat_id: int, bot_token: str):
                 await bot.send_message(chat_id, txt)
             else:
                 report = build_report(misses)
-                await bot.send_message(
-                    chat_id, escape_markdown(report), parse_mode="Markdown"
-                )
+                await bot.send_message(chat_id, escape_markdown(report), parse_mode="Markdown")
 
             from aiogram.types import FSInputFile
 
-            await bot.send_document(
-                chat_id, FSInputFile(patched), caption="Файл с подсветкой ⬆️"
-            )
+            await bot.send_document(chat_id, FSInputFile(patched), caption="Файл с подсветкой ⬆️")
             os.remove(file_path)
             os.remove(patched)
             log.info("validate_task_success", file_path=file_path, user_id=user_id)
         except Exception as e:  # noqa: BLE001
-            log.error(
-                "validate_task_error", file_path=file_path, user_id=user_id, error=str(e)
-            )
+            log.error("validate_task_error", file_path=file_path, user_id=user_id, error=str(e))
 
     # Выполняем асинхронную часть в отдельном event loop
     asyncio.run(_run())

@@ -23,17 +23,16 @@ async def main():
     setup_logging(settings.log_level)
     logger = logging.getLogger(__name__)
     logger.info("🚀 Запуск Telegram File Bot...")
-    
+
     if not settings.bot_token:
         logger.error("❌ BOT_TOKEN не установлен")
         return
-    
 
-    
     # Проверяем подключение к Яндекс.Диску
     if settings.yandex_disk_token:
         try:
             from app.services.yandex_disk_service import YandexDiskService
+
             yandex_service = YandexDiskService(settings.yandex_disk_token)
             connected = await yandex_service.check_connection()
             if connected:
@@ -44,17 +43,17 @@ async def main():
             logger.warning(f"⚠️ Яндекс.Диск недоступен: {e} - функции Яндекс.Диска отключены")
     else:
         logger.warning("⚠️ YANDEX_DISK_TOKEN не установлен - функции Яндекс.Диска отключены")
-    
+
     bot = Bot(
         token=settings.bot_token,
         # Убираем parse_mode чтобы избежать ошибок парсинга Markdown
     )
     dp = Dispatcher()
     dp.include_router(main_router)
-    
+
     # Создаем временную директорию
     os.makedirs("temp", exist_ok=True)
-    
+
     logger.info("✅ Бот запущен и готов к работе")
     try:
         await dp.start_polling(bot)

@@ -17,25 +17,19 @@ class OCRService:
         self.tesseract_lang = "+".join(self.languages)
         self.logger = logger
 
-    async def process_pdf_with_ocr(
-        self, input_pdf_path: str, output_pdf_path: str = None
-    ) -> Dict[str, Any]:
+    async def process_pdf_with_ocr(self, input_pdf_path: str, output_pdf_path: str = None) -> Dict[str, Any]:
         if not output_pdf_path:
             output_pdf_path = input_pdf_path.replace(".pdf", "_ocr.pdf")
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, self._run_ocrmypdf, input_pdf_path, output_pdf_path
-            )
+            await loop.run_in_executor(None, self._run_ocrmypdf, input_pdf_path, output_pdf_path)
             extracted_text = await self.extract_text_from_pdf(output_pdf_path)
             result = {
                 "success": True,
                 "input_path": input_pdf_path,
                 "output_path": output_pdf_path,
                 "text": extracted_text,
-                "pages_count": (
-                    len(extracted_text) if isinstance(extracted_text, list) else 1
-                ),
+                "pages_count": (len(extracted_text) if isinstance(extracted_text, list) else 1),
                 "languages": self.languages,
             }
             self.logger.info(f"OCR обработка завершена: {input_pdf_path}")
@@ -86,9 +80,7 @@ class OCRService:
     async def extract_text_from_pdf(self, pdf_path: str) -> List[str]:
         try:
             loop = asyncio.get_event_loop()
-            pages_text = await loop.run_in_executor(
-                None, self._extract_pdf_text_sync, pdf_path
-            )
+            pages_text = await loop.run_in_executor(None, self._extract_pdf_text_sync, pdf_path)
             return pages_text
         except Exception as e:
             self.logger.error(f"Ошибка извлечения текста из {pdf_path}: {e}")
@@ -116,9 +108,7 @@ class OCRService:
     def _ocr_image_sync(self, image_path: str) -> str:
         try:
             image = Image.open(image_path)
-            text = pytesseract.image_to_string(
-                image, lang=self.tesseract_lang, config="--psm 6"
-            )
+            text = pytesseract.image_to_string(image, lang=self.tesseract_lang, config="--psm 6")
             return text
         except Exception as e:
             self.logger.error(f"Ошибка pytesseract: {e}")
@@ -128,9 +118,7 @@ class OCRService:
         try:
             os.makedirs(output_dir, exist_ok=True)
             loop = asyncio.get_event_loop()
-            image_paths = await loop.run_in_executor(
-                None, self._convert_pdf_to_images_sync, pdf_path, output_dir
-            )
+            image_paths = await loop.run_in_executor(None, self._convert_pdf_to_images_sync, pdf_path, output_dir)
             return image_paths
         except Exception as e:
             self.logger.error(f"Ошибка конвертации PDF в изображения: {e}")
@@ -200,7 +188,6 @@ class OCRService:
 
 from pathlib import Path
 import tempfile
-import ocrmypdf
 import structlog
 
 log = structlog.get_logger(__name__)
@@ -219,11 +206,11 @@ def run_ocr(src: Path) -> tuple[Path, str]:
             src,
             dst_pdf,
             language="rus+eng",
-            skip_text=True,          # если текст уже есть – не трогаем
-            deskew=False,            # не крутим и не «чистим» страницы
+            skip_text=True,  # если текст уже есть – не трогаем
+            deskew=False,  # не крутим и не «чистим» страницы
             rotate_pages=False,
             remove_background=False,
-            sidecar=str(sidecar),    # <— сюда кладётся plain-text
+            sidecar=str(sidecar),  # <— сюда кладётся plain-text
             progress_bar=False,
         )
         text = sidecar.read_text(encoding="utf-8", errors="ignore")

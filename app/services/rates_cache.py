@@ -3,6 +3,7 @@
 Формат ключа: ``cbr:<ISO-date>``
 Значение: JSON-словарь {"USD": 90.12, ...}
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -40,7 +41,7 @@ async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
     """Разбирает XML-ответ ЦБ в словарь курсов и возвращает реальную дату."""
     tree = ET.fromstring(xml_text)
     result: dict[str, float] = {}
-    
+
     # Извлекаем реальную дату из XML
     date_str = tree.get("Date", "")
     if date_str:
@@ -52,9 +53,9 @@ async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
             real_date = dt.date.today()
     else:
         real_date = dt.date.today()
-    
+
     log.info("cbr_parsing_xml", date_str=date_str, real_date=str(real_date))
-    
+
     # Пробуем найти все валюты по кодам
     for iso, cbr_id in ISO2CBR.items():
         valute = tree.find(f".//Valute[@ID='{cbr_id}']")
@@ -73,7 +74,7 @@ async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
             log.info("cbr_rate_parsed", iso=iso, rate=result[iso])
         except Exception as e:
             log.error("cbr_parse_error", iso=iso, cbr_id=cbr_id, error=str(e))
-    
+
     # Если не нашли TRY, пробуем найти по началу кода
     if "TRY" not in result:
         for valute in tree.findall(".//Valute"):
@@ -93,7 +94,7 @@ async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
                         break
                     except Exception as e:
                         log.error("cbr_try_parse_error", error=str(e))
-    
+
     log.info("cbr_parsing_complete", currencies_found=list(result.keys()), total_rates=len(result))
     return result, real_date
 
@@ -113,7 +114,7 @@ async def get_rate(
     4. Если промах и ``cache_only=True`` – возвращает ``None`` без обращения к сети.
     """
     redis = await _get_redis()
-    
+
     # Для выходных дней запрашиваем последний рабочий день
     # Если сегодня воскресенье (6) или суббота (5), запрашиваем пятницу
     # НО если запрашиваем завтрашний курс, не применяем weekend-adjustment
@@ -121,10 +122,7 @@ async def get_rate(
     if weekday >= 5 and not requested_tomorrow:  # суббота или воскресенье, но не завтра
         days_to_subtract = weekday - 4  # 5->1, 6->2
         actual_date = date - dt.timedelta(days=days_to_subtract)
-        log.info("cbr_weekend_adjustment", 
-                original_date=str(date), 
-                adjusted_date=str(actual_date),
-                weekday=weekday)
+        log.info("cbr_weekend_adjustment", original_date=str(date), adjusted_date=str(actual_date), weekday=weekday)
     else:
         actual_date = date
 
@@ -139,13 +137,11 @@ async def get_rate(
             if currency in rates:
                 # Возвращаем официальный курс ЦБ без наценки
                 official_rate = decimal.Decimal(str(rates[currency]))
-                log.info("cbr_rate_found_cache", 
-                        currency=currency, 
-                        official_rate=str(official_rate))
+                log.info("cbr_rate_found_cache", currency=currency, official_rate=str(official_rate))
                 return official_rate
         except Exception as e:  # noqa: BLE001
             log.warning("cbr_cache_parse_error", error=str(e))
-    
+
     if cache_only:
         return None
 
@@ -165,11 +161,10 @@ async def get_rate(
         return None
 
     rates, real_date = await _parse_rates(xml_text)
-    log.info("cbr_parsed_rates", 
-             real_date=str(real_date), 
-             currencies_found=list(rates.keys()),
-             requested_currency=currency)
-    
+    log.info(
+        "cbr_parsed_rates", real_date=str(real_date), currencies_found=list(rates.keys()), requested_currency=currency
+    )
+
     if not rates:
         log.warning("cbr_no_rates_found")
         #  ⬇⬇ Paste fallback cache‑loop here
@@ -185,11 +180,13 @@ async def get_rate(
                     if currency in rates:
                         # Возвращаем официальный курс ЦБ без наценки
                         official_rate = decimal.Decimal(str(rates[currency]))
-                        log.info("cbr_rate_found_previous_day", 
-                                requested_date=str(date), 
-                                found_date=str(check_date),
-                                currency=currency,
-                                official_rate=str(official_rate))
+                        log.info(
+                            "cbr_rate_found_previous_day",
+                            requested_date=str(date),
+                            found_date=str(check_date),
+                            currency=currency,
+                            official_rate=str(official_rate),
+                        )
                         return official_rate
                 except Exception as e:  # noqa: BLE001
                     log.warning("cbr_cache_parse_error", error=str(e))
@@ -203,13 +200,9 @@ async def get_rate(
     if currency in rates:
         # Возвращаем официальный курс ЦБ без наценки
         official_rate = decimal.Decimal(str(rates[currency]))
-        
-        log.info("cbr_rate_found", 
-                currency=currency, 
-                official_rate=str(official_rate), 
-                date=str(real_date))
+
+        log.info("cbr_rate_found", currency=currency, official_rate=str(official_rate), date=str(real_date))
         return official_rate
-    
+
     log.warning("cbr_currency_not_found", currency=currency, available_currencies=list(rates.keys()))
     return None
-    

@@ -1,11 +1,12 @@
-import docx
 import pytest
+from docx import Document
+
 from app.services.ocr import extract_text
 
 
 def test_extract_text_on_sample(tmp_path):
     sample = tmp_path / "sample.docx"
-    doc = docx.Document()
+    doc = Document()
     doc.add_paragraph("Hello OCR!")
     doc.save(sample)
     text = extract_text(sample.read_bytes(), sample.name)

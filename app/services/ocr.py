@@ -33,12 +33,8 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
                 pass
             # OCR по страницам
             images = convert_from_bytes(file_bytes)
-            log.info(
-                "pdf_text_extracted", filename=filename, ext=ext, pages=len(images)
-            )
-            return "\n".join(
-                pytesseract.image_to_string(img, lang="rus+eng") for img in images
-            )
+            log.info("pdf_text_extracted", filename=filename, ext=ext, pages=len(images))
+            return "\n".join(pytesseract.image_to_string(img, lang="rus+eng") for img in images)
         elif ext in ("jpg", "jpeg", "png"):
             from PIL import Image
 

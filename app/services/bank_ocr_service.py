@@ -52,9 +52,7 @@ class BankDocumentOCR:
     async def process_bank_document(self, file_path: str) -> List[BankPayment]:
         try:
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self._process_document_sync, file_path
-            )
+            return await loop.run_in_executor(None, self._process_document_sync, file_path)
         except Exception as e:
             raise Exception(f"Ошибка обработки банковского документа: {str(e)}")
 

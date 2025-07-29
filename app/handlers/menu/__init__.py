@@ -19,4 +19,4 @@ menu_router.include_router(upload_router)  # Загрузка после OCR
 menu_router.include_router(client_calc_router)
 menu_router.include_router(cbr_rates_router)
 menu_router.include_router(help_router)
-menu_router.include_router(main_router) 
+menu_router.include_router(main_router)
