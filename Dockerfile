@@ -20,18 +20,17 @@ WORKDIR /app
 # Копирование файлов зависимостей
 COPY requirements.txt .
 
-# Установка Python зависимостей
+# Переключение на непривилегированного пользователя перед установкой pip
+USER botuser
+
+# Установка Python зависимостей от имени botuser
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование исходного кода
-COPY . .
+COPY --chown=botuser:botuser . .
 
-# Создание директорий и установка прав
-RUN mkdir -p logs temp && \
-    chown -R botuser:botuser /app
-
-# Переключение на непривилегированного пользователя
-USER botuser
+# Создание директорий
+RUN mkdir -p logs temp
 
 # Переменные окружения
 ENV PYTHONPATH=/app
