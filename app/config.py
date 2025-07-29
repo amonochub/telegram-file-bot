@@ -2,8 +2,8 @@
 Конфигурация приложения
 """
 import os
-from typing import Optional, List
-from pydantic import Field
+from typing import Optional, List, Union
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 import logging
 
@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     # Bot
     bot_token: str = Field(..., validation_alias="BOT_TOKEN")
     allowed_user_id: Optional[str] = Field(None, validation_alias="ALLOWED_USER_ID")
+    
+    @field_validator('allowed_user_id', mode='before')
+    @classmethod
+    def validate_allowed_user_id(cls, v):
+        """Валидатор для allowed_user_id"""
+        if v is None or v == "":
+            return None
+        return str(v)
     
     @property
     def allowed_user_ids(self) -> List[int]:
