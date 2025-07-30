@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # Yandex.Disk root path
     yandex_root_path: str = Field("disk:/1-Sh23SGxNjxYQ", validation_alias="YANDEX_ROOT_PATH")
 
+    # Gemini API
+    gemini_api_key: Optional[str] = Field(None, validation_alias="GEMINI_API_KEY")
+
 
 # Создаем глобальный экземпляр настроек
 settings = Settings()
