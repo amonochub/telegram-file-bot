@@ -15,7 +15,7 @@ USER_FILES_DIR = YANDEX_ROOT_PATH
 
 class Settings(BaseSettings):
     """Настройки приложения"""
-    
+
     # Настройка для загрузки .env файла
     class Config:
         env_file = ".env"
@@ -47,7 +47,6 @@ class Settings(BaseSettings):
     def is_user_allowed(self, user_id: int) -> bool:
         """Проверяет, разрешен ли доступ пользователю"""
         if not self.allowed_user_ids:  # Если список пустой - доступ разрешен всем
-            import logging
             logging.warning(
                 "SECURITY WARNING: No allowed users specified in ALLOWED_USER_ID. "
                 "Bot is open to all users. Consider setting ALLOWED_USER_ID for production use."
