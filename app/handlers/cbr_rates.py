@@ -5,6 +5,7 @@
 с использованием новой надёжной системы.
 """
 
+import re
 import structlog
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -153,7 +154,7 @@ async def direct_currency_input(msg: Message, state: FSMContext):
     await state.clear()
 
 
-@router.message(F.text.regexp(r"^(курс|курсы|цб|cbr)$", flags="i"))
+@router.message(F.text.regexp(r"^(курс|курсы|цб|cbr)$", flags=re.IGNORECASE))
 async def quick_rate_request(msg: Message, state: FSMContext):
     """Быстрый запрос курса по ключевым словам"""
     await rates_menu_start(msg, state) 

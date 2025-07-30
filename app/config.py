@@ -15,6 +15,11 @@ USER_FILES_DIR = YANDEX_ROOT_PATH
 
 class Settings(BaseSettings):
     """Настройки приложения"""
+    
+    # Настройка для загрузки .env файла
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
 
     # Bot
     bot_token: str = Field(..., validation_alias="BOT_TOKEN")
