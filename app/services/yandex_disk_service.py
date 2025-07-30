@@ -40,17 +40,16 @@ class YandexDiskService:
             self.logger.error(f"Ошибка подключения к Яндекс.Диску: {e}")
             return False
 
-    async def upload_file(
-        self, local_path: str, remote_path: str
-    ) -> Optional[str]:
+    async def upload_file(self, local_path: str, remote_path: str) -> Optional[str]:
         try:
             if not os.path.exists(local_path):
                 self.logger.error(f"Файл не найден: {local_path}")
                 return None
-            
+
             # Создаем базовую папку при первой загрузке
             try:
                 from app.config import USER_FILES_DIR
+
                 # Правильно обрабатываем путь disk:/disk:
                 if USER_FILES_DIR.startswith("disk:"):
                     base_dir = USER_FILES_DIR[5:]  # Убираем только первый disk:
@@ -60,17 +59,17 @@ class YandexDiskService:
                 self.logger.info(f"Базовая папка создана: {base_dir}")
             except Exception as e:
                 self.logger.warning(f"Не удалось создать базовую папку: {e}")
-            
+
             # Правильно обрабатываем путь для загрузки
             if remote_path.startswith("disk:"):
                 clean_remote_path = remote_path[5:]  # Убираем только первый disk:
             else:
                 clean_remote_path = remote_path
-            
+
             remote_dir = os.path.dirname(clean_remote_path)
             if remote_dir and remote_dir != "/":
                 await self.ensure_path(remote_dir)
-            
+
             self.logger.info(f"upload_file: original_path='{remote_path}', clean_path='{clean_remote_path}'")
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self._upload, local_path, clean_remote_path)  # type: ignore[arg-type]
@@ -100,25 +99,21 @@ class YandexDiskService:
             self.logger.error(f"Неожиданная ошибка при скачивании: {e}")
             return False
 
-    async def get_files_list(
-        self, path: str = "/", limit: int = 100
-    ) -> List[Dict[str, Any]]:
+    async def get_files_list(self, path: str = "/", limit: int = 100) -> List[Dict[str, Any]]:
         try:
             # Убираем только первый префикс disk: если он есть
             if path.startswith("disk:"):
                 clean_path = path[5:]  # Убираем "disk:" (5 символов)
             else:
                 clean_path = path
-            
+
             self.logger.info(f"get_files_list: original_path='{path}', clean_path='{clean_path}'")
-            
+
             loop = asyncio.get_event_loop()
-            files_info = await loop.run_in_executor(
-                None, lambda: list(self.client.listdir(clean_path, limit=limit))
-            )
-            
+            files_info = await loop.run_in_executor(None, lambda: list(self.client.listdir(clean_path, limit=limit)))
+
             self.logger.info(f"API response: {len(files_info)} items from {clean_path}")
-            
+
             files_list = []
             for item in files_info:
                 file_info = {
@@ -131,10 +126,8 @@ class YandexDiskService:
                 }
                 files_list.append(file_info)
                 self.logger.debug(f"Added item: {file_info['name']} ({file_info['type']})")
-            
-            self.logger.info(
-                f"Получен список из {len(files_list)} элементов из {path} (clean_path: {clean_path})"
-            )
+
+            self.logger.info(f"Получен список из {len(files_list)} элементов из {path} (clean_path: {clean_path})")
             return files_list
         except YaDiskError as e:
             self.logger.error(f"Ошибка получения списка файлов {path}: {e}")
@@ -187,9 +180,7 @@ class YandexDiskService:
                 "free_space": disk_info.total_space - disk_info.used_space,
                 "total_space_gb": round(disk_info.total_space / (1024**3), 2),
                 "used_space_gb": round(disk_info.used_space / (1024**3), 2),
-                "free_space_gb": round(
-                    (disk_info.total_space - disk_info.used_space) / (1024**3), 2
-                ),
+                "free_space_gb": round((disk_info.total_space - disk_info.used_space) / (1024**3), 2),
             }
         except YaDiskError as e:
             self.logger.error(f"Ошибка получения информации о диске: {e}")
@@ -210,14 +201,10 @@ class YandexDiskService:
     async def get_download_url(self, remote_path: str) -> Optional[str]:
         try:
             loop = asyncio.get_event_loop()
-            download_info = await loop.run_in_executor(
-                None, self.client.get_download_link, remote_path
-            )
+            download_info = await loop.run_in_executor(None, self.client.get_download_link, remote_path)
             return download_info
         except Exception as e:
-            self.logger.error(
-                f"Ошибка получения ссылки для скачивания {remote_path}: {e}"
-            )
+            self.logger.error(f"Ошибка получения ссылки для скачивания {remote_path}: {e}")
             return None
 
     async def _ensure_directory_exists(self, remote_dir: str):

@@ -61,8 +61,4 @@ def determine_path(filename: str) -> str:
     if info is None:
         return f"unsorted/{Path(filename).stem}"
 
-    return (
-        f"{info['principal']}/"
-        f"{info['principal']}_{info['agent']}/"
-        f"{info['doctype']}_{info['number']}_{info['date']}"
-    )
+    return f"{info['principal']}/{info['principal']}_{info['agent']}/{info['doctype']}_{info['number']}_{info['date']}"

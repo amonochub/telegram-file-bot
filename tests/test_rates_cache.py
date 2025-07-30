@@ -23,10 +23,10 @@ class _FakeRedis:  # минимальный мок Redis
 async def test_rate_cached(monkeypatch):
     fake_redis = _FakeRedis()
 
-    async def fake_from_url(url):  # noqa: D401
+    async def fake_from_url(url, **kwargs):  # noqa: D401
         return fake_redis
 
-    monkeypatch.setattr("app.services.rates_cache.aioredis", "from_url", fake_from_url)
+    monkeypatch.setattr("redis.asyncio.from_url", fake_from_url)
 
     date = dt.date(2025, 1, 1)
     xml = """<?xml version=\"1.0\" encoding=\"windows-1251\"?>

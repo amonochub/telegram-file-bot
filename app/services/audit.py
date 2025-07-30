@@ -22,9 +22,7 @@ def log_operation(func):
             return result
         except Exception as e:
             duration = time.time() - start_time
-            log.error(
-                "audit_error", func=func.__name__, duration=duration, error=str(e)
-            )
+            log.error("audit_error", func=func.__name__, duration=duration, error=str(e))
             raise
 
     return wrapper

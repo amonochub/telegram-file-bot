@@ -1,7 +1,10 @@
 import os
 import tempfile
+from unittest.mock import Mock, patch
+
+import fitz
 import pytest
-from unittest.mock import patch, Mock
+
 from app.services.ocr_service import OCRService
 
 @pytest.fixture

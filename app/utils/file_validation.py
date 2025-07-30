@@ -15,9 +15,7 @@ def validate_file(filename: str, file_size: int) -> None:
     if not filename or not filename.strip():
         raise FileValidationError("Пустое имя файла")
     if len(filename) > MAX_FILENAME_LENGTH:
-        raise FileValidationError(
-            f"Слишком длинное имя файла (макс. {MAX_FILENAME_LENGTH} символов)"
-        )
+        raise FileValidationError(f"Слишком длинное имя файла (макс. {MAX_FILENAME_LENGTH} символов)")
     if "." not in filename:
         raise FileValidationError("Файл должен иметь расширение")
     ext = filename.lower().rsplit(".", 1)[-1]
@@ -28,9 +26,7 @@ def validate_file(filename: str, file_size: int) -> None:
     if file_size > settings.max_file_size:
         size_mb = file_size / (1024 * 1024)
         max_mb = settings.max_file_size / (1024 * 1024)
-        raise FileValidationError(
-            f"Файл слишком большой: {size_mb:.1f}МБ (макс. {max_mb:.0f}МБ)"
-        )
+        raise FileValidationError(f"Файл слишком большой: {size_mb:.1f}МБ (макс. {max_mb:.0f}МБ)")
     if re.search(DANGEROUS_CHARS, filename):
         raise FileValidationError("Имя файла содержит недопустимые символы")
     if filename.startswith(".") or filename.startswith("~"):

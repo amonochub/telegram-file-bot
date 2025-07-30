@@ -107,7 +107,7 @@ currency_kb = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(text="🇹🇷 TRY", callback_data="cur_TRY"),
-        ]
+        ],
     ]
 )
 
@@ -120,6 +120,7 @@ async def calc_menu_start(msg: Message, state: FSMContext):
         "За какой день рассчитать оплату?\n\n👈 Выберите одну из кнопок ниже.",
         reply_markup=day_kb,
     )
+
 
 # ----- Обработка дня -----
 
@@ -138,23 +139,18 @@ async def process_day(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("cur_"))
 async def process_currency(cb: CallbackQuery, state: FSMContext):
     currency = cb.data.split("_")[1]
-    
+
     # Проверяем поддерживаемые валюты
     supported_currencies = {"USD", "EUR", "CNY", "AED", "TRY"}
     if currency not in supported_currencies:
-        await cb.answer(
-            f"Курс {currency} не поддерживается ЦБ РФ 🙈\nВыберите другую валюту.",
-            show_alert=True
-        )
+        await cb.answer(f"Курс {currency} не поддерживается ЦБ РФ 🙈\nВыберите другую валюту.", show_alert=True)
         return
-    
+
     data = await state.get_data()
     data["currency"] = currency
     await state.update_data(**data)
     await state.set_state(CalcStates.entering_commission)
-    await cb.message.edit_text(
-        "Укажите размер вознаграждения агента в процентах (например 3.5)"
-    )
+    await cb.message.edit_text("Укажите размер вознаграждения агента в процентах (например 3.5)")
     await cb.answer()
 
 
@@ -186,7 +182,7 @@ async def input_commission(msg: Message, state: FSMContext):
     if data.get("for_tomorrow"):
         tomorrow = dt.date.today() + dt.timedelta(days=1)
         log.info("calc_tomorrow_request", tomorrow=str(tomorrow), currency=data["currency"])
-        
+
         # Сначала пробуем получить завтрашний курс
         rate = await safe_fetch_rate(data["currency"], tomorrow, requested_tomorrow=True)
         if rate:
@@ -196,12 +192,11 @@ async def input_commission(msg: Message, state: FSMContext):
                 reply_markup=main_menu(),
             )
             return await state.clear()
-        
+
         # Если завтрашний курс недоступен, сообщаем об этом
         log.info("calc_tomorrow_rate_not_found", currency=data["currency"])
         await msg.answer(
-            "Курс ЦБ на завтра пока не опубликован 🙈\n"
-            "Я пришлю расчёт сразу, как только он появится!",
+            "Курс ЦБ на завтра пока не опубликован 🙈\nЯ пришлю расчёт сразу, как только он появится!",
             reply_markup=main_menu(),
         )
         await state.set_state(CalcStates.waiting_tomorrow_rate)
@@ -227,7 +222,7 @@ async def input_commission(msg: Message, state: FSMContext):
             await msg.answer("Курс пока не доступен. Попробуйте позже.")
             return await state.clear()
         await msg.answer("⚠️ Используется курс за последний рабочий день.")
-    
+
     await msg.answer(
         result_message(data["currency"], rate, data["amount"], pct),
         reply_markup=main_menu(),
@@ -242,7 +237,7 @@ async def fallback_amount(msg: Message, state: FSMContext):
     current = await state.get_state()
     if current is not None:  # внутри цепочки – игнорируем
         return
-    
+
     # Если пользователь ввёл число без контекста, начинаем заново
     await state.set_state(CalcStates.choosing_day)
     await state.update_data(data=CalcData().__dict__)
@@ -253,9 +248,7 @@ async def fallback_amount(msg: Message, state: FSMContext):
 
 
 @celery_app.task(name="calc_tasks.wait_rate_and_notify", bind=True, max_retries=None)
-def wait_rate_and_notify(
-    self, chat_id: int, currency: str, amount: str, commission: str
-):
+def wait_rate_and_notify(self, chat_id: int, currency: str, amount: str, commission: str):
     import asyncio
 
     loop = asyncio.get_event_loop()

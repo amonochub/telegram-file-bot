@@ -10,7 +10,6 @@ UPLOAD_MENU_TEXT = "📤 Загрузка файлов"
 UPLOAD_INSTRUCTIONS = "Отправьте файл или архив для загрузки. Папки будут созданы автоматически по имени файла."
 
 
-
 # Распознать PDF
 OCR_MENU_TEXT = "🧾 Распознать PDF"
 OCR_INSTRUCTIONS = "Отправьте PDF-документ для распознавания текста (OCR). После загрузки появится меню действий."
@@ -73,6 +72,4 @@ LOG_MAIN_MENU_BUTTON_TRIGGERED = "main_menu_button triggered"
 LOG_CLIENT_CALC_MENU_TRIGGERED = "client_calc_menu triggered"
 LOG_CBR_RATES_MENU_TRIGGERED = "cbr_rates_menu triggered"
 LOG_HELP_BUTTON_TRIGGERED = "help_button triggered"
-LOG_UNHANDLED_MESSAGE = "Неопознанное сообщение" 
-
- 
+LOG_UNHANDLED_MESSAGE = "Неопознанное сообщение"
