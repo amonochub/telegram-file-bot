@@ -5,11 +5,11 @@ from unittest.mock import Mock, patch
 import fitz
 import pytest
 
-from app.services.ocr_service import OCRService
+from app.services.ocr_service import perform_ocr
 
 @pytest.fixture
-def ocr_service():
-    return OCRService(['rus', 'eng'])
+def mock_perform_ocr():
+    return perform_ocr
 
 def create_dummy_pdf(tmp_path):
     # Создаёт пустой PDF для теста
@@ -22,22 +22,15 @@ def create_dummy_pdf(tmp_path):
     return str(pdf_path)
 
 @pytest.mark.asyncio
-async def test_process_pdf_with_ocr(ocr_service, tmp_path):
+async def test_perform_ocr(mock_perform_ocr, tmp_path):
     pdf_path = create_dummy_pdf(tmp_path)
-    output_pdf = str(tmp_path / "ocr.pdf")
     with patch("ocrmypdf.ocr") as mock_ocr:
         mock_ocr.return_value = None
-        result = await ocr_service.process_pdf_with_ocr(pdf_path, output_pdf)
-        assert result['success']
-        assert result['input_path'] == pdf_path
-        assert result['output_path'] == output_pdf
-
-@pytest.mark.asyncio
-async def test_extract_text_from_pdf(ocr_service, tmp_path):
-    pdf_path = create_dummy_pdf(tmp_path)
-    text = await ocr_service.extract_text_from_pdf(pdf_path)
-    assert isinstance(text, list)
-    assert len(text) == 1
+        with patch("pathlib.Path.read_text", return_value="Test text"):
+            result_pdf_path, result_text = await mock_perform_ocr(pdf_path)
+            assert isinstance(result_pdf_path, type(tmp_path))
+            assert isinstance(result_text, str)
+            assert "Test text" in result_text
 
 # Временно отключено: тест не проходит из-за отсутствия корректного мока или тестового изображения
 # @pytest.mark.asyncio
@@ -52,26 +45,5 @@ async def test_extract_text_from_pdf(ocr_service, tmp_path):
 #         text = await ocr_service.ocr_image_to_text(img_path)
 #         assert text == "test" 
 
-@pytest.mark.asyncio
-async def test_ocr_pdf_processing():
-    service = OCRService(['rus', 'eng'])
-    with tempfile.NamedTemporaryFile(suffix='.pdf') as temp_pdf:
-        with patch('ocrmypdf.ocr') as mock_ocr:
-            mock_ocr.return_value = None
-            with patch.object(service, '_extract_pdf_text_sync') as mock_extract:
-                mock_extract.return_value = ["Страница 1", "Страница 2"]
-                result = await service.process_pdf_with_ocr(
-                    temp_pdf.name, temp_pdf.name + "_ocr.pdf"
-                )
-                assert result['success'] is True
-                assert len(result['text']) == 2
-
-# Проблемный тест временно отключён из-за нестабильности OCR на изображениях
-@pytest.mark.skip(reason="pytesseract не всегда стабильно работает в CI/локально")
-@pytest.mark.asyncio
-async def test_ocr_image_to_text():
-    service = OCRService(['rus', 'eng'])
-    with tempfile.NamedTemporaryFile(suffix='.png') as temp_img:
-        with patch('pytesseract.image_to_string', return_value="Текст"):
-            text = await service.ocr_image_to_text(temp_img.name)
-            assert text == "Текст" 
+# Тесты для старого OCRService класса удалены, так как он больше не используется
+# Новая функция perform_ocr тестируется выше 
