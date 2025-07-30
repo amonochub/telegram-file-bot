@@ -48,6 +48,8 @@ def normalize_date(date_str: str) -> str:
 
 def parse_filename(filename: str) -> Optional[FilenameInfo]:
     """Основной парсер имени файла с расширенной поддержкой форматов дат"""
+    if not filename:
+        return None
     match = FILE_RE.match(filename)
     if not match:
         return None
