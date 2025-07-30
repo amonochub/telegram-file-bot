@@ -4,6 +4,7 @@ import decimal
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+import aiohttp
 import structlog
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
