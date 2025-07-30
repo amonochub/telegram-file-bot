@@ -17,6 +17,22 @@ services:
       - ./logs:/app/logs
       - ./temp:/app/temp
 
+  worker:
+    build: .
+    command: celery -A app.handlers.client_calc worker --loglevel=info
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - YANDEX_DISK_TOKEN=${YANDEX_DISK_TOKEN}
+      - ALLOWED_USER_ID=${ALLOWED_USER_ID}
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+
   redis:
     image: redis:7-alpine
     ports:

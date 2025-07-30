@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     def is_user_allowed(self, user_id: int) -> bool:
         """Проверяет, разрешен ли доступ пользователю"""
         if not self.allowed_user_ids:  # Если список пустой - доступ разрешен всем
+            import logging
+            logging.warning(
+                "SECURITY WARNING: No allowed users specified in ALLOWED_USER_ID. "
+                "Bot is open to all users. Consider setting ALLOWED_USER_ID for production use."
+            )
             return True
         return user_id in self.allowed_user_ids
 

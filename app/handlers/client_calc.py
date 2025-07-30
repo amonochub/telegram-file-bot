@@ -30,7 +30,11 @@ celery_app = Celery("calc_tasks", broker=settings.redis_url, backend=settings.re
 CBR_URL = "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}"
 
 
-# --- Кэшированные курсы ЦБ ---
+# --- Новый надёжный сервис курсов ЦБ ---
+from app.services.cbr_rate_service import get_cbr_service
+
+
+# --- Legacy функции для обратной совместимости ---
 from app.services.rates_cache import get_rate as cached_cbr_rate
 
 
@@ -43,8 +47,7 @@ async def fetch_cbr_rate(currency: str, for_date: dt.date) -> decimal.Decimal | 
 
 
 async def safe_fetch_rate(currency: str, date: dt.date, requested_tomorrow: bool = False) -> decimal.Decimal | None:
-    import aiohttp
-
+    """Legacy-функция для обратной совместимости"""
     try:
         rate = await cached_cbr_rate(date, currency, requested_tomorrow=requested_tomorrow)
         if rate is None:
@@ -56,15 +59,19 @@ async def safe_fetch_rate(currency: str, date: dt.date, requested_tomorrow: bool
 
 
 def result_message(currency, rate, amount, commission_pct):
+    """Формирует сообщение с результатом расчёта"""
     rub_sum = (amount * rate).quantize(decimal.Decimal("0.01"))
-    fee = (rub_sum * commission_pct / 100).quantize(decimal.Decimal("0.01"))
-    total = (rub_sum + fee).quantize(decimal.Decimal("0.01"))
+    commission_amount = (rub_sum * commission_pct / 100).quantize(decimal.Decimal("0.01"))
+    total = rub_sum + commission_amount
+    
     return (
-        f"Сумма в валюте: {amount} {currency}\n"
-        f"Курс ЦБ: {rate} ₽ за {currency}\n"
-        f"Сумма в рублях: {rub_sum} ₽\n"
-        f"Вознаграждение агента: {fee} ₽\n"
-        f"💵 Общая сумма в рублях: {total} ₽"
+        f"💰 <b>Расчёт для клиента</b>\n\n"
+        f"💱 <b>Валюта:</b> {currency}\n"
+        f"💵 <b>Сумма:</b> {amount} {currency}\n"
+        f"📊 <b>Курс ЦБ:</b> {rate:.4f} ₽\n"
+        f"💸 <b>Сумма в рублях:</b> {rub_sum} ₽\n"
+        f"💼 <b>Комиссия ({commission_pct}%):</b> {commission_amount} ₽\n"
+        f"🎯 <b>Итого к оплате:</b> {total} ₽"
     )
 
 
@@ -115,9 +122,15 @@ currency_kb = InlineKeyboardMarkup(
 @router.message(F.text == "💰 Расчёт для клиента")
 async def calc_menu_start(msg: Message, state: FSMContext):
     await state.set_state(CalcStates.choosing_day)
-    await state.update_data(data=CalcData().__dict__)
     await msg.answer(
-        "За какой день рассчитать оплату?\n\n👈 Выберите одну из кнопок ниже.",
+        "💰 <b>Расчёт для клиента</b>\n\n"
+        "📋 <b>Как это работает:</b>\n"
+        "• Выберите день (сегодня/завтра)\n"
+        "• Выберите валюту\n"
+        "• Укажите процент комиссии\n"
+        "• Получите готовый расчёт!\n\n"
+        "👈 Выберите одну из кнопок ниже:",
+        parse_mode="HTML",
         reply_markup=day_kb,
     )
 
@@ -127,12 +140,12 @@ async def calc_menu_start(msg: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("calc_"))
 async def process_day(cb: CallbackQuery, state: FSMContext):
-    pick = cb.data.split("_")[1]  # today / tomorrow
-    data = (await state.get_data()) or {}
+    pick = cb.data.split("_")[1]
+    data = await state.get_data()
     data["for_tomorrow"] = pick == "tomorrow"
     await state.update_data(**data)
     await state.set_state(CalcStates.entering_amount)
-    await cb.message.edit_text("Введите сумму в валюте (например 1000)")
+    await cb.message.edit_text("Введите сумму в валюте (например: 1000)")
     await cb.answer()
 
 
@@ -160,7 +173,19 @@ async def input_amount(msg: Message, state: FSMContext):
         amount = decimal.Decimal(msg.text.replace(",", "."))
         assert amount > 0
     except Exception:
-        return await msg.reply("Введите положительное число. Попробуйте ещё раз 😊")
+        return await msg.reply(
+            "❌ <b>Неверный формат числа!</b>\n\n"
+            "📝 <b>Правильные примеры:</b>\n"
+            "• 1000\n"
+            "• 1500.50\n"
+            "• 2,500\n\n"
+            "💡 <b>Советы:</b>\n"
+            "• Используйте точку или запятую для дробной части\n"
+            "• Число должно быть больше нуля\n"
+            "• Не используйте пробелы или спецсимволы\n\n"
+            "Попробуйте ещё раз! 😊",
+            parse_mode="HTML"
+        )
     data = await state.get_data()
     data["amount"] = amount
     await state.update_data(**data)
@@ -174,60 +199,58 @@ async def input_commission(msg: Message, state: FSMContext):
         pct = decimal.Decimal(msg.text.replace(",", "."))
         assert pct >= 0
     except Exception:
-        return await msg.reply("Число должно быть ≥ 0. Попробуйте ещё раз.")
+        return await msg.reply(
+            "❌ <b>Неверный процент комиссии!</b>\n\n"
+            "📝 <b>Правильные примеры:</b>\n"
+            "• 3.5 (3.5%)\n"
+            "• 2 (2%)\n"
+            "• 0 (без комиссии)\n\n"
+            "💡 <b>Советы:</b>\n"
+            "• Процент должен быть ≥ 0\n"
+            "• Используйте точку для дробной части\n"
+            "• Обычно комиссия 1-5%\n\n"
+            "Попробуйте ещё раз! 😊",
+            parse_mode="HTML"
+        )
+    
     data = await state.get_data()
     data["commission"] = pct
     await state.update_data(**data)
 
+    # Получаем сервис курсов ЦБ
+    cbr_service = await get_cbr_service(msg.bot)
+    
     if data.get("for_tomorrow"):
-        tomorrow = dt.date.today() + dt.timedelta(days=1)
-        log.info("calc_tomorrow_request", tomorrow=str(tomorrow), currency=data["currency"])
-
-        # Сначала пробуем получить завтрашний курс
-        rate = await safe_fetch_rate(data["currency"], tomorrow, requested_tomorrow=True)
-        if rate:
-            log.info("calc_tomorrow_rate_found", rate=str(rate), currency=data["currency"])
+        # Обработка завтрашнего курса с новой надёжной системой
+        result = await cbr_service.process_tomorrow_rate(msg.chat.id, data["currency"])
+        
+        await msg.answer(result["message"], parse_mode="HTML", reply_markup=main_menu())
+        
+        if result["success"]:
+            # Курс найден - показываем расчёт
             await msg.answer(
-                result_message(data["currency"], rate, data["amount"], pct),
+                result_message(data["currency"], result["rate"], data["amount"], pct),
                 reply_markup=main_menu(),
             )
-            return await state.clear()
-
-        # Если завтрашний курс недоступен, сообщаем об этом
-        log.info("calc_tomorrow_rate_not_found", currency=data["currency"])
-        await msg.answer(
-            "Курс ЦБ на завтра пока не опубликован 🙈\nЯ пришлю расчёт сразу, как только он появится!",
-            reply_markup=main_menu(),
-        )
-        await state.set_state(CalcStates.waiting_tomorrow_rate)
-        celery_app.send_task(
-            "calc_tasks.wait_rate_and_notify",
-            kwargs={
-                "chat_id": msg.chat.id,
-                "currency": data["currency"],
-                "amount": str(data["amount"]),
-                "commission": str(pct),
-            },
-        )
-        return
-
-    # Расчет для сегодня
-    today = dt.date.today()
-    rate = await safe_fetch_rate(data["currency"], today)
-    if rate is None:
-        # Если курс на сегодня недоступен, пробуем вчерашний
-        yesterday = today - dt.timedelta(days=1)
-        rate = await safe_fetch_rate(data["currency"], yesterday)
-        if rate is None:
-            await msg.answer("Курс пока не доступен. Попробуйте позже.")
-            return await state.clear()
-        await msg.answer("⚠️ Используется курс за последний рабочий день.")
-
-    await msg.answer(
-        result_message(data["currency"], rate, data["amount"], pct),
-        reply_markup=main_menu(),
-    )
-    await state.clear()
+        # Если курс не найден, подписка уже запущена в process_tomorrow_rate
+        
+        return await state.clear()
+    
+    else:
+        # Обработка сегодняшнего курса с новой надёжной системой
+        result = await cbr_service.process_today_rate(msg.chat.id, data["currency"])
+        
+        if result["success"]:
+            # Курс найден - показываем расчёт
+            await msg.answer(
+                result_message(data["currency"], result["rate"], data["amount"], pct),
+                reply_markup=main_menu(),
+            )
+        else:
+            # Курс не найден - показываем сообщение об ошибке
+            await msg.answer(result["message"], parse_mode="HTML", reply_markup=main_menu())
+        
+        return await state.clear()
 
 
 # Fallback для случаев, когда пользователь пропускает шаги
@@ -247,8 +270,10 @@ async def fallback_amount(msg: Message, state: FSMContext):
     )
 
 
+# Legacy Celery task - оставляем для обратной совместимости
 @celery_app.task(name="calc_tasks.wait_rate_and_notify", bind=True, max_retries=None)
 def wait_rate_and_notify(self, chat_id: int, currency: str, amount: str, commission: str):
+    """Legacy задача для обратной совместимости"""
     import asyncio
 
     loop = asyncio.get_event_loop()

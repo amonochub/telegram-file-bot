@@ -6,7 +6,7 @@ MAIN_KB = ReplyKeyboardMarkup(
         [KeyboardButton(text="📤 Загрузка файлов")],
         [KeyboardButton(text="🧾 Распознать PDF")],
         [KeyboardButton(text="💰 Расчёт для клиента")],
-        [KeyboardButton(text="📈 Курсы ЦБ")],
+        [KeyboardButton(text="💱 Курсы ЦБ")],
         [KeyboardButton(text="ℹ️ Помощь")],
     ],
     resize_keyboard=True,

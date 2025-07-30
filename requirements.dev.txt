@@ -1,8 +1,24 @@
-pytest
-pytest-asyncio
-pytest-cov
-mypy
-ruff
-black
-pre-commit 
-types-aiofiles 
+# Зависимости для разработки и тестирования
+
+# Тестирование
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+aioresponses>=0.7.0
+
+# Линтинг и форматирование
+flake8>=6.0.0
+black>=23.3.0
+isort>=5.12.0
+mypy>=1.3.0
+
+# Безопасность
+safety>=2.3.0
+bandit>=1.7.0
+
+# Pre-commit hooks
+pre-commit>=3.3.0
+
+# Типы для тестирования
+types-requests>=2.31.0
+types-PyYAML>=6.0.0 

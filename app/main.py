@@ -11,12 +11,7 @@ from app.logging_setup import setup_logging
 from app.routers import main_router
 
 # === регистрация роутеров ===
-import app.handlers.menu.main
-import app.handlers.menu.upload
-import app.handlers.menu.overview
-import app.handlers.menu.ocr
-import app.handlers.menu.client_calc
-import app.handlers.menu.cbr_rates
+# Роутеры автоматически регистрируются через app.routers.main_router
 
 
 async def main():

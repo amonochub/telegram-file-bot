@@ -1,42 +1,24 @@
 from pathlib import Path
-import re
 from typing import Optional, Dict
 
+from app.utils.filename_parser import parse_filename as parse_filename_advanced, FilenameInfo
 
-# Helper to parse filenames with pattern:
-# <principal>_<agent>_<doctype parts>_<number>_<date>.<ext>
+
 def parse_filename(filename: str) -> Optional[Dict[str, str]]:
-    """Parse a filename of the pattern
-    <principal>_<agent>_<doctype parts>_<number>_<date>.<ext>
-    and return a dict with keys principal, agent, doctype, number, date.
-    Returns None if pattern is not satisfied.
+    """Parse a filename using the advanced parser and convert to dict format.
+    
+    Uses the unified parser from filename_parser.py for consistency.
     """
-    stem = Path(filename).stem
-    parts = stem.split("_")
-    # Need at least 5 parts: principal, agent, doctype (≥1 part), number, date
-    if len(parts) < 5:
+    result = parse_filename_advanced(filename)
+    if result is None:
         return None
-
-    principal = parts[0]
-    agent = parts[1]
-    # doc_type may consist of several parts (keep original case/spaces with join)
-    number = parts[-2]
-    date = parts[-1]
-    doctype_parts = parts[2:-2]
-    doctype = " ".join(doctype_parts)
-
-    # simple validations: number is digit-like, date has 6 or 8 digits
-    if not number.isdigit():
-        return None
-    if not re.fullmatch(r"\d{6}|\d{8}", date):
-        return None
-
+    
     return {
-        "principal": principal,
-        "agent": agent,
-        "doctype": doctype.lower(),  # normalize to lower-case for path
-        "number": number,
-        "date": date,
+        "principal": result.principal,
+        "agent": result.agent,
+        "doctype": result.doctype,
+        "number": result.number,
+        "date": result.date,
     }
 
 

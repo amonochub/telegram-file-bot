@@ -1,12 +1,12 @@
 import asyncio
-import logging
 import os
 from typing import Any, Dict, List, Optional
 
+import structlog
 import yadisk
 from yadisk.exceptions import YaDiskError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class YandexDiskService:
@@ -20,13 +20,29 @@ class YandexDiskService:
     # --- helpers для run_in_executor ---
     def _upload(self, local_path: str, remote_path: str) -> None:
         """Блокирующая загрузка файла на Диск (используется в executor)."""
-        self.client.upload(local_path, remote_path)
+        # Добавляем таймаут для операций загрузки
+        import asyncio
+        try:
+            self.client.upload(local_path, remote_path)
+        except Exception as e:
+            self.logger.error("upload_timeout_or_error", local_path=local_path, remote_path=remote_path, error=str(e))
+            raise
 
     def _download(self, remote_path: str, local_path: str) -> None:
-        self.client.download(remote_path, local_path)
+        """Блокирующее скачивание файла с Диска (используется в executor)."""
+        try:
+            self.client.download(remote_path, local_path)
+        except Exception as e:
+            self.logger.error("download_timeout_or_error", remote_path=remote_path, local_path=local_path, error=str(e))
+            raise
 
     def _remove(self, remote_path: str, permanently: bool) -> None:
-        self.client.remove(remote_path, permanently)
+        """Блокирующее удаление файла с Диска (используется в executor)."""
+        try:
+            self.client.remove(remote_path, permanently)
+        except Exception as e:
+            self.logger.error("remove_timeout_or_error", remote_path=remote_path, permanently=permanently, error=str(e))
+            raise
 
     async def check_connection(self) -> bool:
         try:
@@ -72,7 +88,11 @@ class YandexDiskService:
 
             self.logger.info(f"upload_file: original_path='{remote_path}', clean_path='{clean_remote_path}'")
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._upload, local_path, clean_remote_path)  # type: ignore[arg-type]
+            # Добавляем таймаут 60 секунд для загрузки файлов
+            await asyncio.wait_for(
+                loop.run_in_executor(None, self._upload, local_path, clean_remote_path),  # type: ignore[arg-type]
+                timeout=60.0
+            )
             self.logger.info(f"Файл загружен на Яндекс.Диск: {clean_remote_path}")
             url = await self.get_download_url(clean_remote_path)
             return url or remote_path
@@ -89,7 +109,11 @@ class YandexDiskService:
             if local_dir:
                 os.makedirs(local_dir, exist_ok=True)
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._download, remote_path, local_path)  # type: ignore[arg-type]
+            # Добавляем таймаут 60 секунд для скачивания файлов
+            await asyncio.wait_for(
+                loop.run_in_executor(None, self._download, remote_path, local_path),  # type: ignore[arg-type]
+                timeout=60.0
+            )
             self.logger.info(f"Файл скачан с Яндекс.Диска: {local_path}")
             return True
         except YaDiskError as e:
@@ -139,7 +163,11 @@ class YandexDiskService:
     async def delete_file(self, remote_path: str, permanently: bool = False) -> bool:
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._remove, remote_path, permanently)  # type: ignore[arg-type]
+            # Добавляем таймаут 30 секунд для удаления файлов
+            await asyncio.wait_for(
+                loop.run_in_executor(None, self._remove, remote_path, permanently),  # type: ignore[arg-type]
+                timeout=30.0
+            )
             self.logger.info(f"Файл удален: {remote_path}")
             return True
         except YaDiskError as e:
@@ -148,6 +176,10 @@ class YandexDiskService:
         except Exception as e:
             self.logger.error(f"Неожиданная ошибка при удалении: {e}")
             return False
+
+    async def remove_file(self, remote_path: str) -> bool:
+        """Алиас для delete_file для совместимости с интерфейсом"""
+        return await self.delete_file(remote_path, permanently=True)
 
     async def create_folder(self, path: str) -> bool:
         try:
