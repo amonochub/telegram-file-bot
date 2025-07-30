@@ -6,9 +6,10 @@ from aiogram import F, Router
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import FSInputFile
+from docx import Document
 
 from app.config import settings
-from app.services.ocr_service import OCRService
+from app.services.ocr_service import perform_ocr
 from app.services.yandex_disk_service import YandexDiskService
 from app.keyboards.menu import main_menu
 
@@ -16,7 +17,6 @@ router = Router()
 logger = structlog.get_logger()
 
 yandex_service = YandexDiskService(settings.yandex_disk_token)
-ocr_service = OCRService(["rus", "eng"])
 
 
 @router.message(F.document)
@@ -89,36 +89,37 @@ async def process_pdf_ocr(callback_query):
         with tempfile.NamedTemporaryFile(delete=False, suffix="_ocr.pdf") as temp_output:
             temp_output_path = temp_output.name
         await callback_query.bot.download_file(file_telegram_info.file_path, temp_input_path)
-        ocr_result = await ocr_service.process_pdf_with_ocr(temp_input_path, temp_output_path)
+        
+        # Выполняем OCR
+        try:
+            ocr_pdf_path, full_text = await perform_ocr(temp_input_path)
+            ocr_result = {"success": True, "text": [full_text], "pages_count": 1, "languages": ["rus+eng"]}
+        except Exception as e:
+            ocr_result = {"success": False, "error": str(e)}
+        
         if ocr_result["success"]:
             ocr_filename = file_info["file_name"].replace(".pdf", "_ocr.pdf")
             remote_dir = f"{settings.upload_dir}/{user_id}/ocr_documents"
 
-            # формируем полный текст
-            full_text = "\n".join(ocr_result["text"])
-
-            # оптимизируем PDF
-            with tempfile.NamedTemporaryFile(delete=False, suffix="_opt.pdf") as tmp_opt:
-                opt_path = tmp_opt.name
-            ocr_service.optimize_pdf(temp_output_path, opt_path)
-
-            # сохраняем TXT и DOCX
-
-            # PDF (optimized)
+            # PDF (OCR result)
             pdf_remote = f"{remote_dir}/{ocr_filename}"
-            uploaded_path = await yandex_service.upload_file(opt_path, pdf_remote)
+            uploaded_path = await yandex_service.upload_file(str(ocr_pdf_path), pdf_remote)
 
             # TXT
             with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp_txt:
                 txt_path = tmp_txt.name
-            ocr_service.save_txt(full_text, txt_path)
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(full_text)
             txt_remote = pdf_remote.replace(".pdf", ".txt")
             txt_url = await yandex_service.upload_file(txt_path, txt_remote)
 
             # DOCX
             with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
                 tmp_docx_path = tmp_docx.name
-            ocr_service.text_to_docx(full_text, tmp_docx_path)
+            from docx import Document
+            doc = Document()
+            doc.add_paragraph(full_text)
+            doc.save(tmp_docx_path)
             await callback_query.message.answer_document(
                 FSInputFile(tmp_docx_path, filename=ocr_filename.replace(".pdf", ".docx"))
             )
