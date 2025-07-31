@@ -6,6 +6,7 @@
 2. Только точная дата - никаких fallback на прошлые даты
 3. Чёткое разделение логики для сегодня/завтра
 4. Подписка на уведомления для завтрашних курсов
+5. Отложенные расчёты при недоступности курса
 """
 
 import asyncio
@@ -15,7 +16,7 @@ from typing import Optional, Dict, Any
 import decimal
 import structlog
 
-from app.services.rates_cache import get_rate as cached_cbr_rate
+from app.services.rates_cache import get_rate as cached_cbr_rate, has_rate, save_pending_calc, get_all_pending, remove_pending
 from app.services.cbr_notifier import CBRNotificationService
 from app.config import settings
 
@@ -73,6 +74,154 @@ class CBRRateService:
                 error=str(e)
             )
             return None
+    
+    async def save_pending_calc(self, user_id: int, date: date, currency: str, amount: decimal.Decimal, commission: decimal.Decimal) -> bool:
+        """
+        Сохраняет отложенный расчёт.
+        
+        Args:
+            user_id: ID пользователя
+            date: Дата для расчёта
+            currency: Валюта
+            amount: Сумма
+            commission: Комиссия в процентах
+            
+        Returns:
+            True если сохранено успешно
+        """
+        try:
+            result = await save_pending_calc(user_id, date, currency, amount, commission)
+            if result:
+                log.info(
+                    "cbr_pending_calc_saved",
+                    user_id=user_id,
+                    date=str(date),
+                    currency=currency,
+                    amount=str(amount),
+                    commission=str(commission)
+                )
+            return result
+        except Exception as e:
+            log.error(
+                "cbr_save_pending_calc_error",
+                user_id=user_id,
+                date=str(date),
+                error=str(e)
+            )
+            return False
+    
+    async def process_pending_calcs(self, rates: Dict[str, decimal.Decimal], target_date: date) -> None:
+        """
+        Обрабатывает все отложенные расчёты для указанной даты.
+        
+        Args:
+            rates: Словарь курсов валют
+            target_date: Дата, для которой обрабатываются расчёты
+        """
+        if not self.bot:
+            log.error("cbr_process_pending_calcs_no_bot")
+            return
+        
+        try:
+            pending_calcs = await get_all_pending()
+            
+            for calc_data in pending_calcs:
+                try:
+                    calc_date = date.fromisoformat(calc_data["date"])
+                    
+                    # Обрабатываем только расчёты для целевой даты
+                    if calc_date != target_date:
+                        continue
+                    
+                    user_id = calc_data["user_id"]
+                    currency = calc_data["currency"]
+                    amount = decimal.Decimal(calc_data["amount"])
+                    commission = decimal.Decimal(calc_data["commission"])
+                    
+                    # Проверяем, есть ли курс для этой валюты
+                    if currency in rates:
+                        rate = rates[currency]
+                        
+                        # Выполняем расчёт
+                        result_message = self._format_calc_result(currency, amount, rate, commission)
+                        
+                        # Отправляем результат пользователю
+                        await self.bot.send_message(
+                            user_id, 
+                            result_message, 
+                            parse_mode="HTML"
+                        )
+                        
+                        # Удаляем отложенный расчёт
+                        await remove_pending(user_id, target_date)
+                        
+                        log.info(
+                            "cbr_pending_calc_processed",
+                            user_id=user_id,
+                            date=str(target_date),
+                            currency=currency,
+                            rate=str(rate)
+                        )
+                    else:
+                        # Курс для валюты не найден
+                        error_message = (
+                            f"⚠️ <b>Курс {currency} на {target_date:%d.%m.%Y} не найден.</b>\n\n"
+                            "🔄 <b>Расчёт выполнить не удалось.</b>\n"
+                            "📅 <b>Попробуйте запросить расчёт позже.</b>"
+                        )
+                        
+                        await self.bot.send_message(
+                            user_id,
+                            error_message,
+                            parse_mode="HTML"
+                        )
+                        
+                        # Удаляем отложенный расчёт
+                        await remove_pending(user_id, target_date)
+                        
+                        log.warning(
+                            "cbr_pending_calc_currency_not_found",
+                            user_id=user_id,
+                            date=str(target_date),
+                            currency=currency
+                        )
+                        
+                except Exception as e:
+                    log.error(
+                        "cbr_process_pending_calc_error",
+                        calc_data=calc_data,
+                        error=str(e)
+                    )
+            
+        except Exception as e:
+            log.error("cbr_process_pending_calcs_error", error=str(e))
+    
+    def _format_calc_result(self, currency: str, amount: decimal.Decimal, rate: decimal.Decimal, commission: decimal.Decimal) -> str:
+        """
+        Форматирует результат расчёта.
+        
+        Args:
+            currency: Валюта
+            amount: Сумма
+            rate: Курс
+            commission: Комиссия в процентах
+            
+        Returns:
+            Отформатированное сообщение с результатом
+        """
+        rub_sum = (amount * rate).quantize(decimal.Decimal("0.01"))
+        commission_amount = (rub_sum * commission / 100).quantize(decimal.Decimal("0.01"))
+        total = rub_sum + commission_amount
+        
+        return (
+            f"💰 <b>Расчёт для клиента (отложенный)</b>\n\n"
+            f"💱 <b>Валюта:</b> {currency}\n"
+            f"💵 <b>Сумма:</b> {amount} {currency}\n"
+            f"📊 <b>Курс ЦБ:</b> {rate:.4f} ₽\n"
+            f"💸 <b>Сумма в рублях:</b> {rub_sum} ₽\n"
+            f"💼 <b>Комиссия ({commission}%):</b> {commission_amount} ₽\n"
+            f"🎯 <b>Итого к оплате:</b> {total} ₽"
+        )
     
     async def process_today_rate(self, user_id: int, currency: str) -> Dict[str, Any]:
         """
@@ -193,6 +342,10 @@ class CBRRateService:
                     )
                     
                     await self.bot.send_message(user_id, message, parse_mode="HTML")
+                    
+                    # Обрабатываем отложенные расчёты для этой даты
+                    rates = {currency: rate}
+                    await self.process_pending_calcs(rates, tomorrow)
                     
                     log.info(
                         "cbr_tomorrow_rate_found",

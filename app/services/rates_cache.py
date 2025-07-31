@@ -10,7 +10,7 @@ import datetime as dt
 import decimal
 import json
 import xml.etree.ElementTree as ET
-from typing import Final, Optional
+from typing import Final, Optional, List, Dict, Any
 
 import aiohttp
 import asyncio
@@ -35,6 +35,188 @@ async def _get_redis():
     if not hasattr(_get_redis, "_redis"):
         _get_redis._redis = aioredis.from_url(settings.redis_url)  # type: ignore[attr-defined]
     return _get_redis._redis  # type: ignore[attr-defined]
+
+
+async def has_rate(date: dt.date) -> bool:
+    """
+    Проверяет, есть ли данные на указанную дату.
+    
+    Args:
+        date: Дата для проверки
+        
+    Returns:
+        True если данные есть, False если нет
+    """
+    try:
+        redis_client = await _get_redis()
+        key = f"cbr:{date.isoformat()}"
+        
+        # Проверяем кэш
+        cached_data = await redis_client.get(key)
+        if cached_data:
+            if isinstance(cached_data, bytes):
+                cached_data = cached_data.decode()
+            rates = json.loads(cached_data)
+            if rates and len(rates) > 0:
+                log.info("cbr_rate_exists_in_cache", date=str(date), currencies=list(rates.keys()))
+                return True
+        
+        # Если в кэше нет, пробуем запросить из API
+        rates, real_date = await _fetch_rates_from_api(date)
+        if rates and len(rates) > 0:
+            # Сохраняем в кэш
+            await redis_client.set(key, json.dumps(rates, ensure_ascii=False), ex=TTL)
+            log.info("cbr_rate_exists_in_api", date=str(date), real_date=str(real_date), currencies=list(rates.keys()))
+            return True
+        
+        log.info("cbr_rate_not_exists", date=str(date))
+        return False
+        
+    except Exception as e:
+        log.error("cbr_has_rate_error", date=str(date), error=str(e))
+        return False
+
+
+async def _fetch_rates_from_api(date: dt.date) -> tuple[dict[str, float], dt.date]:
+    """
+    Запрашивает курсы валют с сайта ЦБ для указанной даты.
+    
+    Args:
+        date: Дата для запроса
+        
+    Returns:
+        Кортеж (словарь курсов, реальная дата из ответа)
+    """
+    # Для выходных дней запрашиваем последний рабочий день
+    weekday = date.weekday()  # 0=понедельник, 6=воскресенье
+    if weekday >= 5:  # суббота или воскресенье
+        days_to_subtract = weekday - 4  # 5->1, 6->2
+        actual_date = date - dt.timedelta(days=days_to_subtract)
+        log.info("cbr_weekend_adjustment", original_date=str(date), adjusted_date=str(actual_date), weekday=weekday)
+    else:
+        actual_date = date
+
+    # сетевой запрос - используем правильный формат даты DD/MM/YYYY
+    date_req = actual_date.strftime("%d/%m/%Y")
+    url = CBR_URL.format(for_date=date_req)
+    log.info("cbr_request", url=url, requested_date=str(date), actual_date=str(actual_date))
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    log.warning("cbr_http_fail", status=resp.status, url=url)
+                    return {}, date
+                xml_text = await resp.text()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        log.error("cbr_http_exc", url=url, error=str(e))
+        return {}, date
+
+    rates, real_date = await _parse_rates(xml_text)
+    log.info(
+        "cbr_parsed_rates", real_date=str(real_date), currencies_found=list(rates.keys())
+    )
+
+    return rates, real_date
+
+
+async def save_pending_calc(user_id: int, date: dt.date, currency: str, amount: decimal.Decimal, commission: decimal.Decimal) -> bool:
+    """
+    Сохраняет отложенный расчёт в Redis.
+    
+    Args:
+        user_id: ID пользователя
+        date: Дата для расчёта
+        currency: Валюта
+        amount: Сумма
+        commission: Комиссия в процентах
+        
+    Returns:
+        True если сохранено успешно, False если ошибка
+    """
+    try:
+        redis_client = await _get_redis()
+        key = f"pending_calc:{user_id}:{date.isoformat()}"
+        
+        data = {
+            "user_id": user_id,
+            "date": date.isoformat(),
+            "currency": currency,
+            "amount": str(amount),
+            "commission": str(commission),
+            "created_at": dt.datetime.now().isoformat()
+        }
+        
+        # Сохраняем с TTL 24 часа
+        await redis_client.set(key, json.dumps(data, ensure_ascii=False), ex=60*60*24)
+        
+        log.info("cbr_pending_calc_saved", user_id=user_id, date=str(date), currency=currency)
+        return True
+        
+    except Exception as e:
+        log.error("cbr_save_pending_calc_error", user_id=user_id, date=str(date), error=str(e))
+        return False
+
+
+async def get_all_pending() -> List[Dict[str, Any]]:
+    """
+    Получает все отложенные расчёты из Redis.
+    
+    Returns:
+        Список отложенных расчётов
+    """
+    try:
+        redis_client = await _get_redis()
+        pattern = "pending_calc:*"
+        
+        # Получаем все ключи отложенных расчётов
+        keys = await redis_client.keys(pattern)
+        
+        pending_calcs = []
+        for key in keys:
+            try:
+                data = await redis_client.get(key)
+                if data:
+                    calc_data = json.loads(data)
+                    pending_calcs.append(calc_data)
+            except Exception as e:
+                log.error("cbr_get_pending_calc_error", key=key, error=str(e))
+        
+        log.info("cbr_get_all_pending", count=len(pending_calcs))
+        return pending_calcs
+        
+    except Exception as e:
+        log.error("cbr_get_all_pending_error", error=str(e))
+        return []
+
+
+async def remove_pending(user_id: int, date: dt.date) -> bool:
+    """
+    Удаляет отложенный расчёт из Redis.
+    
+    Args:
+        user_id: ID пользователя
+        date: Дата расчёта
+        
+    Returns:
+        True если удалено успешно, False если ошибка
+    """
+    try:
+        redis_client = await _get_redis()
+        key = f"pending_calc:{user_id}:{date.isoformat()}"
+        
+        result = await redis_client.delete(key)
+        
+        if result > 0:
+            log.info("cbr_pending_calc_removed", user_id=user_id, date=str(date))
+            return True
+        else:
+            log.warning("cbr_pending_calc_not_found", user_id=user_id, date=str(date))
+            return False
+            
+    except Exception as e:
+        log.error("cbr_remove_pending_error", user_id=user_id, date=str(date), error=str(e))
+        return False
 
 
 async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:

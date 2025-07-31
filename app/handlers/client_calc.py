@@ -1,8 +1,14 @@
-import asyncio
-import datetime as dt
+"""
+Обработчик расчёта для клиента.
+
+Позволяет рассчитать стоимость валюты по курсу ЦБ с учётом комиссии агента.
+"""
+
 import decimal
-import xml.etree.ElementTree as ET
+import datetime as dt
+from datetime import date, timedelta
 from dataclasses import dataclass
+from typing import Optional
 
 import aiohttp
 import structlog
@@ -233,7 +239,32 @@ async def input_commission(msg: Message, state: FSMContext):
                 result_message(data["currency"], result["rate"], data["amount"], pct),
                 reply_markup=main_menu(),
             )
-        # Если курс не найден, подписка уже запущена в process_tomorrow_rate
+        else:
+            # Курс не найден - сохраняем отложенный расчёт
+            tomorrow = dt.date.today() + dt.timedelta(days=1)
+            saved = await cbr_service.save_pending_calc(
+                msg.chat.id, 
+                tomorrow, 
+                data["currency"], 
+                data["amount"], 
+                pct
+            )
+            
+            if saved:
+                await msg.answer(
+                    "💾 <b>Расчёт сохранён!</b>\n\n"
+                    "📅 <b>Как только курс на завтра появится, я автоматически выполню расчёт и пришлю результат.</b>\n\n"
+                    "🔔 <b>Вы также получите уведомление о появлении курса.</b>",
+                    parse_mode="HTML",
+                    reply_markup=main_menu(),
+                )
+            else:
+                await msg.answer(
+                    "❌ <b>Ошибка при сохранении расчёта.</b>\n\n"
+                    "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
+                    parse_mode="HTML",
+                    reply_markup=main_menu(),
+                )
         
         return await state.clear()
     
