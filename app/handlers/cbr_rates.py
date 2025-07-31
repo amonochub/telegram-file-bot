@@ -166,7 +166,7 @@ from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 
-from app.services.cbr_rate_service import cbr_service
+from app.services.cbr_rate_service import get_cbr_service
 from app.keyboards.menu import main_menu
 
 log = structlog.get_logger()
@@ -182,6 +182,7 @@ async def cmd_cbr_subscribe(message: Message) -> None:
         user_id = message.from_user.id
         
         # Переключаем подписку
+        cbr_service = await get_cbr_service(message.bot)
         result = await cbr_service.toggle_subscription(user_id)
         
         # Отправляем результат пользователю
@@ -217,6 +218,7 @@ async def cbr_subscribe_callback(callback: CallbackQuery) -> None:
         user_id = callback.from_user.id
         
         # Переключаем подписку
+        cbr_service = await get_cbr_service(callback.bot)
         result = await cbr_service.toggle_subscription(user_id)
         
         # Отправляем результат пользователю
@@ -252,6 +254,7 @@ async def cmd_cbr_status(message: Message) -> None:
         user_id = message.from_user.id
         
         # Проверяем статус подписки
+        cbr_service = await get_cbr_service(message.bot)
         is_subscribed = await cbr_service.is_subscriber(user_id)
         
         if is_subscribed:

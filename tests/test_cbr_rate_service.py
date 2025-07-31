@@ -319,24 +319,24 @@ class TestCBRRateService:
         assert len(service._subscription_tasks) == 0
 
     @pytest.mark.asyncio
-    async def test_send_message_safe_success(self, service, mock_bot):
+    async def test_send_message_safe_success(self, service):
         """Тест успешной отправки сообщения"""
-        mock_bot.send_message.return_value = None
+        service.bot.send_message.return_value = None
         
         result = await service.send_message_safe(123, "test message")
         
         assert result is True
-        mock_bot.send_message.assert_called_once_with(123, "test message")
+        service.bot.send_message.assert_called_once_with(123, "test message")
     
     @pytest.mark.asyncio
-    async def test_send_message_safe_bot_blocked(self, service, mock_bot):
+    async def test_send_message_safe_bot_blocked(self, service):
         """Тест отправки сообщения заблокированному пользователю"""
-        mock_bot.send_message.side_effect = Exception("bot was blocked by the user")
+        service.bot.send_message.side_effect = Exception("bot was blocked by the user")
         
         result = await service.send_message_safe(123, "test message")
         
         assert result is False
-        mock_bot.send_message.assert_called_once_with(123, "test message")
+        service.bot.send_message.assert_called_once_with(123, "test message")
     
     @pytest.mark.asyncio
     async def test_send_message_safe_no_bot(self):
@@ -348,33 +348,35 @@ class TestCBRRateService:
         assert result is False
     
     @pytest.mark.asyncio
-    async def test_notify_all_subscribers_success(self, service, mock_bot, mock_rates_cache):
+    async def test_notify_all_subscribers_success(self, service):
         """Тест уведомления всех подписчиков"""
-        mock_rates_cache.get_subscribers.return_value = [123, 456]
-        mock_bot.send_message.return_value = None
-        
-        result = await service.notify_all_subscribers("test message")
-        
-        assert result["sent"] == 2
-        assert result["failed"] == 0
-        assert result["total"] == 2
-        assert mock_bot.send_message.call_count == 2
+        with patch('app.services.cbr_rate_service.get_subscribers') as mock_get_subscribers:
+            mock_get_subscribers.return_value = [123, 456]
+            service.bot.send_message.return_value = None
+            
+            result = await service.notify_all_subscribers("test message")
+            
+            assert result["sent"] == 2
+            assert result["failed"] == 0
+            assert result["total"] == 2
+            assert service.bot.send_message.call_count == 2
     
     @pytest.mark.asyncio
-    async def test_notify_all_subscribers_partial_failure(self, service, mock_bot, mock_rates_cache):
+    async def test_notify_all_subscribers_partial_failure(self, service):
         """Тест частичного сбоя при уведомлении подписчиков"""
-        mock_rates_cache.get_subscribers.return_value = [123, 456, 789]
-        mock_bot.send_message.side_effect = [
-            None,  # 123 - успех
-            Exception("bot was blocked"),  # 456 - сбой
-            None  # 789 - успех
-        ]
-        
-        result = await service.notify_all_subscribers("test message")
-        
-        assert result["sent"] == 2
-        assert result["failed"] == 1
-        assert result["total"] == 3
+        with patch('app.services.cbr_rate_service.get_subscribers') as mock_get_subscribers:
+            mock_get_subscribers.return_value = [123, 456, 789]
+            service.bot.send_message.side_effect = [
+                None,  # 123 - успех
+                Exception("bot was blocked"),  # 456 - сбой
+                None  # 789 - успех
+            ]
+            
+            result = await service.notify_all_subscribers("test message")
+            
+            assert result["sent"] == 2
+            assert result["failed"] == 1
+            assert result["total"] == 3
     
     @pytest.mark.asyncio
     async def test_add_subscriber_success(self, service, mock_rates_cache):
