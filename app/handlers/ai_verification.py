@@ -200,9 +200,7 @@ async def verify_documents(callback: CallbackQuery):
             report_data,  # Placeholder for AI verification
         )  # Placeholder for AI verification
         status_icons = {"success": "✅", "warning": "⚠️", "error": "❌"}  # Placeholder for AI verification
-        result_text = (  # Placeholder for AI verification
-            f"{status_icons[analysis_result['status']]} **Результат проверки**\n\n"  # Placeholder for AI verification
-        )  # Placeholder for AI verification
+        result_text = f"{status_icons[analysis_result['status']]} **Результат проверки**\n\n"  # Placeholder for AI verification  # Placeholder for AI verification  # Placeholder for AI verification
         if analysis_result["checks"]:  # Placeholder for AI verification
             result_text += "📋 **Выполненные проверки:**\n"  # Placeholder for AI verification
             for check in analysis_result["checks"]:  # Placeholder for AI verification

@@ -97,12 +97,11 @@ async def handle_manual_upload(msg: Message, state: FSMContext):
     # Валидация файла перед загрузкой
     try:
         from app.utils.file_validation import validate_file, FileValidationError
-        
+
         validate_file(doc.file_name, doc.file_size)
     except FileValidationError as e:
         await msg.answer(
-            f"❌ <b>Файл не прошел проверку:</b>\n\n{str(e)}\n\n"
-            f"Пожалуйста, проверьте файл и попробуйте снова.",
+            f"❌ <b>Файл не прошел проверку:</b>\n\n{str(e)}\n\n" f"Пожалуйста, проверьте файл и попробуйте снова.",
             parse_mode="HTML",
             reply_markup=main_menu(),
         )
@@ -130,7 +129,7 @@ async def handle_manual_upload(msg: Message, state: FSMContext):
             from app.services.yandex_disk_service import YandexDiskService
 
             yandex_service = YandexDiskService(settings.yandex_disk_token)
-            
+
             # Показываем прогресс загрузки
             progress_msg = await msg.answer("⏳ Загружаю файл на Яндекс.Диск...")
 
@@ -147,6 +146,7 @@ async def handle_manual_upload(msg: Message, state: FSMContext):
 
             # Проверяем, соответствует ли имя файла шаблону
             from app.utils.file_router import parse_filename
+
             filename_info = parse_filename(doc.file_name)
             is_unsorted = file_path_components.startswith("unsorted")
 
@@ -177,22 +177,28 @@ async def handle_manual_upload(msg: Message, state: FSMContext):
 
             if success:
                 log.info("manual upload succeeded", filename=doc.file_name, path=file_path)
-                
+
                 # Удаляем сообщение о прогрессе
                 await progress_msg.delete()
-                
+
                 # Формируем сообщение об успешной загрузке
                 success_message = f"✅ Файл <b>{doc.file_name}</b> надёжно сохранён на Яндекс.Диске!\n"
-                
+
                 # Добавляем предупреждение, если файл помещен в unsorted
                 if is_unsorted:
-                    success_message += f"⚠️ <b>Внимание:</b> Файл помещен в папку 'unsorted', так как имя не соответствует шаблону.\n\n"
-                    success_message += "<b>Правильный формат:</b> <code>Принципал_Агент_вид документа_номер_дата</code>\n"
-                    success_message += "<b>Пример:</b> <code>Альфатрекс_Агрико_агентский договор_2_300525.docx</code>\n\n"
-                
+                    success_message += (
+                        f"⚠️ <b>Внимание:</b> Файл помещен в папку 'unsorted', так как имя не соответствует шаблону.\n\n"
+                    )
+                    success_message += (
+                        "<b>Правильный формат:</b> <code>Принципал_Агент_вид документа_номер_дата</code>\n"
+                    )
+                    success_message += (
+                        "<b>Пример:</b> <code>Альфатрекс_Агрико_агентский договор_2_300525.docx</code>\n\n"
+                    )
+
                 success_message += f'<a href="{success}">🔗 Скачать файл</a>\n'
                 success_message += "Хотите загрузить ещё? 📎"
-                
+
                 await msg.answer(
                     success_message,
                     parse_mode="HTML",
@@ -217,6 +223,7 @@ async def handle_manual_upload(msg: Message, state: FSMContext):
     finally:
         # Безопасная очистка временного файла
         from app.utils.cleanup import cleanup_temp_file_safe
+
         cleanup_temp_file_safe(file_path)
     # выходим из режима загрузки, но не отправляем 'Главное меню'
     await state.update_data(upload_mode=False)

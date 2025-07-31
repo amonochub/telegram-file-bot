@@ -6,13 +6,13 @@ from app.utils.filename_parser import parse_filename as parse_filename_advanced,
 
 def parse_filename(filename: str) -> Optional[Dict[str, str]]:
     """Parse a filename using the advanced parser and convert to dict format.
-    
+
     Uses the unified parser from filename_parser.py for consistency.
     """
     result = parse_filename_advanced(filename)
     if result is None:
         return None
-    
+
     return {
         "principal": result.principal,
         "agent": result.agent,

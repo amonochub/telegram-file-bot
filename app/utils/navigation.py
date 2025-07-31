@@ -21,7 +21,7 @@ class NavigationHistory:
     при удалении FSMContext объектов сборщиком мусора.
     """
 
-    _histories = WeakKeyDictionary()
+    _histories: WeakKeyDictionary = WeakKeyDictionary()
 
     def __init__(self, state: FSMContext):
         self.state = state

@@ -4,9 +4,10 @@
 Позволяет рассчитать стоимость валюты по курсу ЦБ с учётом комиссии агента.
 """
 
+import asyncio
 import decimal
 import datetime as dt
-from datetime import date, timedelta
+from datetime import timedelta
 from dataclasses import dataclass
 from typing import Optional
 
@@ -50,13 +51,19 @@ async def fetch_cbr_rate(currency: str, for_date: dt.date) -> decimal.Decimal | 
 
     TODO: удалить после обновления тестов.
     """
-    return await cached_cbr_rate(for_date, currency, requested_tomorrow=False)
+    from app.utils.types import BusinessDate, CurrencyCode
+    business_date = BusinessDate(for_date)
+    currency_code = CurrencyCode(currency)
+    return await cached_cbr_rate(business_date, currency_code, requested_tomorrow=False)
 
 
 async def safe_fetch_rate(currency: str, date: dt.date, requested_tomorrow: bool = False) -> decimal.Decimal | None:
     """Legacy-функция для обратной совместимости"""
     try:
-        rate = await cached_cbr_rate(date, currency, requested_tomorrow=requested_tomorrow)
+        from app.utils.types import BusinessDate, CurrencyCode
+        business_date = BusinessDate(date)
+        currency_code = CurrencyCode(currency)
+        rate = await cached_cbr_rate(business_date, currency_code, requested_tomorrow=requested_tomorrow)
         if rate is None:
             log.warning("cbr_rate_not_found", currency=currency, date=str(date))
         return rate
@@ -70,7 +77,7 @@ def result_message(currency, rate, amount, commission_pct):
     rub_sum = (amount * rate).quantize(decimal.Decimal("0.01"))
     commission_amount = (rub_sum * commission_pct / 100).quantize(decimal.Decimal("0.01"))
     total = rub_sum + commission_amount
-    
+
     return (
         f"💰 <b>Расчёт для клиента</b>\n\n"
         f"💱 <b>Валюта:</b> {currency}\n"
@@ -179,7 +186,7 @@ async def input_amount(msg: Message, state: FSMContext):
     try:
         amount = decimal.Decimal(msg.text.replace(",", "."))
         assert amount > 0
-    except Exception:
+    except (ValueError, decimal.InvalidOperation):
         return await msg.reply(
             "❌ <b>Неверный формат числа!</b>\n\n"
             "📝 <b>Правильные примеры:</b>\n"
@@ -191,7 +198,12 @@ async def input_amount(msg: Message, state: FSMContext):
             "• Число должно быть больше нуля\n"
             "• Не используйте пробелы или спецсимволы\n\n"
             "Попробуйте ещё раз! 😊",
-            parse_mode="HTML"
+            parse_mode="HTML",
+        )
+    except AssertionError:
+        return await msg.reply(
+            "❌ <b>Число должно быть больше нуля!</b>\n\n" "📝 <b>Попробуйте ввести положительное число.</b>",
+            parse_mode="HTML",
         )
     data = await state.get_data()
     data["amount"] = amount
@@ -205,7 +217,7 @@ async def input_commission(msg: Message, state: FSMContext):
     try:
         pct = decimal.Decimal(msg.text.replace(",", "."))
         assert pct >= 0
-    except Exception:
+    except (ValueError, decimal.InvalidOperation):
         return await msg.reply(
             "❌ <b>Неверный процент комиссии!</b>\n\n"
             "📝 <b>Правильные примеры:</b>\n"
@@ -217,22 +229,27 @@ async def input_commission(msg: Message, state: FSMContext):
             "• Используйте точку для дробной части\n"
             "• Обычно комиссия 1-5%\n\n"
             "Попробуйте ещё раз! 😊",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
-    
+    except AssertionError:
+        return await msg.reply(
+            "❌ <b>Процент комиссии не может быть отрицательным!</b>\n\n" "📝 <b>Попробуйте ввести число ≥ 0.</b>",
+            parse_mode="HTML",
+        )
+
     data = await state.get_data()
     data["commission"] = pct
     await state.update_data(**data)
 
     # Получаем сервис курсов ЦБ
     cbr_service = await get_cbr_service(msg.bot)
-    
+
     if data.get("for_tomorrow"):
         # Обработка завтрашнего курса с новой надёжной системой
         result = await cbr_service.process_tomorrow_rate(msg.chat.id, data["currency"])
-        
+
         await msg.answer(result["message"], parse_mode="HTML", reply_markup=main_menu())
-        
+
         if result["success"]:
             # Курс найден - показываем расчёт
             await msg.answer(
@@ -242,14 +259,8 @@ async def input_commission(msg: Message, state: FSMContext):
         else:
             # Курс не найден - сохраняем отложенный расчёт
             tomorrow = dt.date.today() + dt.timedelta(days=1)
-            saved = await cbr_service.save_pending_calc(
-                msg.chat.id, 
-                tomorrow, 
-                data["currency"], 
-                data["amount"], 
-                pct
-            )
-            
+            saved = await cbr_service.save_pending_calc(msg.chat.id, tomorrow, data["currency"], data["amount"], pct)
+
             if saved:
                 await msg.answer(
                     "💾 <b>Расчёт сохранён!</b>\n\n"
@@ -265,13 +276,13 @@ async def input_commission(msg: Message, state: FSMContext):
                     parse_mode="HTML",
                     reply_markup=main_menu(),
                 )
-        
+
         return await state.clear()
-    
+
     else:
         # Обработка сегодняшнего курса с новой надёжной системой
         result = await cbr_service.process_today_rate(msg.chat.id, data["currency"])
-        
+
         if result["success"]:
             # Курс найден - показываем расчёт
             await msg.answer(
@@ -281,7 +292,7 @@ async def input_commission(msg: Message, state: FSMContext):
         else:
             # Курс не найден - показываем сообщение об ошибке
             await msg.answer(result["message"], parse_mode="HTML", reply_markup=main_menu())
-        
+
         return await state.clear()
 
 

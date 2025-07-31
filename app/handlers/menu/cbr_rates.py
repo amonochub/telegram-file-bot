@@ -35,12 +35,12 @@ async def cbr_rates_menu(message: Message, state: FSMContext) -> None:
     try:
         # Перенаправляем на новый обработчик курсов ЦБ
         from app.handlers.cbr_rates import rates_menu_start
+
         await rates_menu_start(message, state)
-        
+
     except Exception as e:
         log.error("cbr_rates_menu_error", user_id=message.from_user.id, error=str(e))
         await message.answer(
-            "❌ Произошла ошибка при работе с курсами ЦБ.\n"
-            "Попробуйте позже или обратитесь к администратору.",
+            "❌ Произошла ошибка при работе с курсами ЦБ.\n" "Попробуйте позже или обратитесь к администратору.",
             reply_markup=main_menu(),
         )

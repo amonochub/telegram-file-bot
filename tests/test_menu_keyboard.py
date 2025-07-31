@@ -43,7 +43,7 @@ def test_all_buttons_present():
 def test_all_handlers_defined():
     """Ensure handlers exist for each button."""
     import importlib
-    
+
     handler_modules = {
         "browse_menu": "app.handlers.menu.overview",
         "upload_menu": "app.handlers.menu.upload",
@@ -53,13 +53,13 @@ def test_all_handlers_defined():
         "help_button": "app.handlers.menu.help",
         "main_menu_button": "app.handlers.menu.main",
     }
-    
+
     for btn_text, handler_name in BUTTONS_TO_HANDLERS.items():
         if handler_name in handler_modules:
             try:
                 module = importlib.import_module(handler_modules[handler_name])
-                assert hasattr(module, handler_name), (
-                    f"Handler '{handler_name}' not found in {handler_modules[handler_name]}"
-                )
+                assert hasattr(
+                    module, handler_name
+                ), f"Handler '{handler_name}' not found in {handler_modules[handler_name]}"
             except ImportError:
                 pytest.fail(f"Module {handler_modules[handler_name]} not found for handler {handler_name}")

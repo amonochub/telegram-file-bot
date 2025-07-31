@@ -4,7 +4,7 @@ Middleware для проверки разрешенных пользовател
 
 from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, TelegramObject
 from app.config import settings
 import structlog
 
@@ -16,11 +16,13 @@ class UserCheckMiddleware(BaseMiddleware):
 
     async def __call__(
         self,
-        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
-        event: Message | CallbackQuery,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
         # Получаем user_id из события
+        if not hasattr(event, 'from_user'):
+            return await handler(event, data)
         user_id = event.from_user.id
 
         # Проверяем, разрешен ли доступ пользователю

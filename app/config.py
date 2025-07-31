@@ -4,9 +4,12 @@
 
 import os
 from typing import Optional, List, Union
+from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings
 import logging
+
+from app.utils.types import UserId, FileSize
 
 # Константы для Яндекс.Диска
 YANDEX_ROOT_PATH = os.getenv("YANDEX_ROOT_PATH", "disk:/1-Sh23SGxNjxYQ")
@@ -26,20 +29,20 @@ class Settings(BaseSettings):
     allowed_user_id: Optional[str] = Field(None, validation_alias="ALLOWED_USER_ID")
 
     @property
-    def allowed_user_ids(self) -> List[int]:
+    def allowed_user_ids(self) -> List[UserId]:
         """Возвращает список разрешенных ID пользователей"""
         if not self.allowed_user_id or self.allowed_user_id.strip() == "":
             return []
 
         try:
             # Разделяем по запятой и убираем пробелы
-            user_ids = [int(uid.strip()) for uid in self.allowed_user_id.split(",") if uid.strip()]
+            user_ids = [UserId(int(uid.strip())) for uid in self.allowed_user_id.split(",") if uid.strip()]
             return user_ids
         except (ValueError, TypeError):
             return []
 
     @property
-    def allowed_user_id_int(self) -> Optional[int]:
+    def allowed_user_id_int(self) -> Optional[UserId]:
         """Возвращает первый allowed_user_id как целое число или None (для обратной совместимости)"""
         user_ids = self.allowed_user_ids
         return user_ids[0] if user_ids else None
@@ -52,7 +55,7 @@ class Settings(BaseSettings):
                 "Bot is open to all users. Consider setting ALLOWED_USER_ID for production use."
             )
             return True
-        return user_id in self.allowed_user_ids
+        return UserId(user_id) in self.allowed_user_ids
 
     # Yandex.Disk
     yandex_disk_token: Optional[str] = Field(None, validation_alias="YANDEX_DISK_TOKEN")
@@ -67,6 +70,16 @@ class Settings(BaseSettings):
     max_file_size: int = Field(100_000_000, validation_alias="MAX_FILE_SIZE")  # 100MB
     upload_dir: str = Field("/bot_files", validation_alias="UPLOAD_DIR")
     temp_dir: str = Field("temp", validation_alias="TEMP_DIR")
+
+    @property
+    def upload_dir_path(self) -> Path:
+        """Возвращает upload_dir как Path объект"""
+        return Path(self.upload_dir)
+
+    @property
+    def temp_dir_path(self) -> Path:
+        """Возвращает temp_dir как Path объект"""
+        return Path(self.temp_dir)
 
     # Cache
     cache_ttl: int = Field(3600, validation_alias="CACHE_TTL")  # 1 hour
@@ -83,4 +96,5 @@ class Settings(BaseSettings):
 
 
 # Создаем глобальный экземпляр настроек
+# Pydantic автоматически загрузит значения из переменных окружения
 settings = Settings()

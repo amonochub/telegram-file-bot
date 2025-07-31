@@ -12,9 +12,9 @@ class TestFilenameParser:
     def test_valid_filename_parsing(self):
         """Тест корректного парсинга имени файла."""
         filename = "Альфатрекс_Агрико_договор_2_300525.docx"
-        
+
         result = parse_filename(filename)
-        
+
         assert result is not None
         assert result.principal == "Альфатрекс"
         assert result.agent == "Агрико"
@@ -26,9 +26,9 @@ class TestFilenameParser:
     def test_valid_filename_with_spaces(self):
         """Тест имени файла с пробелами в названиях."""
         filename = "Сбербанк_Иванов_поручение_15_280725.pdf"
-        
+
         result = parse_filename(filename)
-        
+
         assert result is not None
         assert result.principal == "Сбербанк"
         assert result.agent == "Иванов"
@@ -40,17 +40,17 @@ class TestFilenameParser:
     def test_invalid_filename_format(self):
         """Тест некорректного формата имени файла."""
         filename = "просто_файл.pdf"
-        
+
         result = parse_filename(filename)
-        
+
         assert result is None
 
     def test_filename_with_underscores_in_names(self):
         """Тест имени файла с подчеркиваниями в названиях."""
         filename = "ВТБ_Рога_акт_7_150124.docx"
-        
+
         result = parse_filename(filename)
-        
+
         assert result is not None
         assert result.principal == "ВТБ"
         assert result.agent == "Рога"
@@ -62,18 +62,18 @@ class TestFilenameParser:
     def test_filename_with_special_chars(self):
         """Тест имени файла со специальными символами."""
         filename = "Альфатрекс@Агрико_договор_2_300525.docx"
-        
+
         result = parse_filename(filename)
-        
+
         # Special characters should make parsing fail
         assert result is None
 
     def test_filename_with_dots_in_date(self):
         """Тест имени файла с точками в дате."""
         filename = "Альфатрекс_Агрико_договор_2_30.05.25.docx"
-        
+
         result = parse_filename(filename)
-        
+
         # Dots in date are actually supported and normalized
         assert result is not None
         assert result.date == "300525"  # normalized to remove dots
@@ -81,48 +81,48 @@ class TestFilenameParser:
     def test_empty_filename(self):
         """Тест пустого имени файла."""
         filename = ""
-        
+
         result = parse_filename(filename)
-        
+
         assert result is None
 
     def test_none_filename(self):
         """Тест None имени файла."""
         filename = None
-        
+
         result = parse_filename(filename)
-        
+
         assert result is None
 
     def test_filename_with_emoji(self):
         """Тест имени файла с эмодзи."""
         filename = "Альфатрекс🚀_Агрико_договор_2_300525.docx"
-        
+
         result = parse_filename(filename)
-        
+
         assert result is None
 
     def test_parse_filename_edge_cases(self):
         """Тест граничных случаев парсинга."""
         test_cases = [
             # Минимально валидное имя
-            ("А_Б_В_1_010101.pdf", {
-                "principal": "А",
-                "agent": "Б", 
-                "doctype": "в",  # lowercase
-                "number": "1",
-                "date": "010101"
-            }),
+            (
+                "А_Б_В_1_010101.pdf",
+                {"principal": "А", "agent": "Б", "doctype": "в", "number": "1", "date": "010101"},  # lowercase
+            ),
             # Длинное имя
-            ("Принципал_Агент_Документ_999_311299.pdf", {
-                "principal": "Принципал",
-                "agent": "Агент",
-                "doctype": "документ",  # lowercase
-                "number": "999",
-                "date": "311299"
-            }),
+            (
+                "Принципал_Агент_Документ_999_311299.pdf",
+                {
+                    "principal": "Принципал",
+                    "agent": "Агент",
+                    "doctype": "документ",  # lowercase
+                    "number": "999",
+                    "date": "311299",
+                },
+            ),
         ]
-        
+
         for filename, expected in test_cases:
             result = parse_filename(filename)
             assert result is not None
@@ -141,7 +141,7 @@ class TestFilenameParser:
             "А_Б_В_1_abc.pdf",  # Некорректная дата
             "А_Б_В_1_010101",  # Без расширения
         ]
-        
+
         for filename in invalid_cases:
             result = parse_filename(filename)
-            assert result is None, f"Файл '{filename}' должен быть невалидным" 
+            assert result is None, f"Файл '{filename}' должен быть невалидным"

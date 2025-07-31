@@ -1,9 +1,11 @@
 import sys, types
 
+
 def _stub(name):
     mod = types.ModuleType(name)
     sys.modules[name] = mod
     return mod
+
 
 # Список лёгких зависимостей, которые могут отсутствовать в окружении CI/песочницы
 missing = [
@@ -39,91 +41,132 @@ for pkg in missing:
             if subname not in sys.modules:
                 mod = _stub(subname)
                 if subname == "yadisk":
+
                     class _Y(_Dummy):
-                        def __init__(self,*a, **kw):
+                        def __init__(self, *a, **kw):
                             pass
+
                     mod.YaDisk = _Y
 
 # stub pdfplumber extraction
 if "pdfplumber" in sys.modules:
     pdp = sys.modules["pdfplumber"]
+
     class _PDF:
-        def __enter__(self): return self
-        def __exit__(self,*a): return False
-        def pages(self): return []
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def pages(self):
+            return []
+
     pdp.open = lambda *a, **kw: _PDF()
 
 # если _Dummy ещё не определён (используется ниже)
 if "_Dummy" not in globals():
+
     class _Dummy:  # noqa: D401
         def __getattr__(self, _):
             return self
 
+
 # redis.asyncio alias to dummy Redis
 if "redis.asyncio" in sys.modules:
     rmod = sys.modules["redis.asyncio"]
+
     class _Redis(_Dummy):
         async def get(self, *a, **kw):
             return None
+
         async def set(self, *a, **kw):
             return None
+
         async def zincrby(self, *a, **kw):
             return None
+
         async def zadd(self, *a, **kw):
             return None
+
         async def expire(self, *a, **kw):
             return None
+
         async def smembers(self, *a, **kw):
             return set()
+
         async def sadd(self, *a, **kw):
             return None
+
         async def srem(self, *a, **kw):
             return None
+
     rmod.Redis = _Redis
+
     def from_url(url):
         return _Redis()
+
     rmod.from_url = from_url
 
 # aiohttp minimal
 if "aiohttp" in sys.modules:
     ahttp = sys.modules["aiohttp"]
+
     class _Resp(_Dummy):
         status = 200
+
         async def text(self):
             return ""
+
     class _Session(_Dummy):
         async def __aenter__(self):
             return self
+
         async def __aexit__(self, exc_type, exc, tb):
             return False
+
         def get(self, *a, **kw):
             return _Resp()
+
     ahttp.ClientSession = lambda *a, **kw: _Session()
     ahttp.ClientTimeout = _Dummy
 
 # aiofiles
 if "aiofiles" in sys.modules:
     af = sys.modules["aiofiles"]
+
     async def open(*a, **kw):
         class _F(_Dummy):
-            async def __aenter__(self): return self
-            async def __aexit__(self, exc_type, exc, tb): return False
-            async def read(self): return ""
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def read(self):
+                return ""
+
         return _F()
+
     af.open = open
 
 # Levenshtein
 if "Levenshtein" in sys.modules:
     lev = sys.modules["Levenshtein"]
-    def ratio(a,b): return 0.0
+
+    def ratio(a, b):
+        return 0.0
+
     lev.ratio = ratio
 
 # ensure yadisk.YaDisk attribute
 if "yadisk" in sys.modules:
     y = sys.modules["yadisk"]
+
     class _Y(_Dummy):
         def __init__(self, *a, **kw):
             pass
+
     y.YaDisk = _Y
 
 # Минимальная реализация нужных классов для aiogram
@@ -154,11 +197,13 @@ if "aiogram" in sys.modules:
         def message(self, *a, **kw):
             def decorator(func):
                 return func
+
             return decorator
 
         def callback_query(self, *a, **kw):
             def decorator(func):
                 return func
+
             return decorator
 
     for name in [
@@ -183,7 +228,15 @@ if "aiogram" in sys.modules:
     sub_names = {
         "aiogram.fsm.context": ["FSMContext"],
         "aiogram.fsm.state": ["State", "StatesGroup"],
-        "aiogram.types": ["Message", "CallbackQuery", "InlineKeyboardButton", "InlineKeyboardMarkup", "KeyboardButton", "ReplyKeyboardMarkup", "FSInputFile"],
+        "aiogram.types": [
+            "Message",
+            "CallbackQuery",
+            "InlineKeyboardButton",
+            "InlineKeyboardMarkup",
+            "KeyboardButton",
+            "ReplyKeyboardMarkup",
+            "FSInputFile",
+        ],
         "aiogram.enums": ["ParseMode"],
         "aiogram.client.default": ["DefaultBotProperties"],
     }
@@ -196,11 +249,14 @@ if "aiogram" in sys.modules:
     # aiogram.utils.keyboard
     utils_mod = sys.modules.get("aiogram.utils") or _stub("aiogram.utils")
     kb_mod = sys.modules.get("aiogram.utils.keyboard") or _stub("aiogram.utils.keyboard")
+
     class _KB(_Dummy):
         def button(self, *a, **kw):
             return None
+
         def adjust(self, *a, **kw):
             return None
+
         def as_markup(self):
             return None
 
@@ -224,6 +280,7 @@ if "pydantic" in sys.modules:
     import types as _t2
 
     pd = sys.modules["pydantic"]
+
     def _field(default=None, **kwargs):  # noqa: D401
         return default
 
@@ -240,8 +297,10 @@ if "pydantic" in sys.modules:
         sys.modules[ps_name] = _t2.ModuleType(ps_name)
     ps = sys.modules[ps_name]
     ps.BaseSettings = _BaseSettings
+
     def _settings_config_dict(**kw):
         return dict
+
     ps.SettingsConfigDict = _settings_config_dict
 
 # aioresponses заглушка (для простых проверок количества запросов)
@@ -273,18 +332,23 @@ if "yadisk" not in sys.modules:
     _stub("yadisk")
     _stub("yadisk.exceptions")
     import types as _t3
+
     yex = sys.modules["yadisk.exceptions"]
+
     class _YE(Exception):
         pass
+
     yex.YaDiskError = _YE
 
 # гарантия атрибута YaDisk на объекте yadisk
 if "yadisk" in sys.modules:
     yd = sys.modules["yadisk"]
     if not hasattr(yd, "YaDisk"):
+
         class _Ya(_Dummy):
-            def __init__(self,*a, **kw):
+            def __init__(self, *a, **kw):
                 pass
+
         yd.YaDisk = _Ya
 
 # ensure PIL.Image attribute exists
@@ -300,11 +364,15 @@ else:
 if "celery" in sys.modules:
     cel = sys.modules["celery"]
     if not hasattr(cel, "Celery"):
+
         class _Cel(_Dummy):
             def task(self, *a, **kw):
                 def deco(f):
                     return f
+
                 return deco
+
             def send_task(self, *a, **kw):
                 pass
-        cel.Celery = _Cel 
+
+        cel.Celery = _Cel

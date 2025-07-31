@@ -1,6 +1,9 @@
 import os
+from pathlib import Path
+from typing import Optional
 
 import aiofiles  # type: ignore
+import aiohttp
 import structlog
 
 log = structlog.get_logger(__name__)
@@ -55,12 +58,22 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
 
 async def run_ocr(file_path: str) -> str:
     """
-    Асинхронно извлекает текст из файла по пути file_path (PDF, DOCX, изображения).
+    Выполняет OCR для файла.
+
+    Args:
+        file_path: Путь к файлу
+
+    Returns:
+        Распознанный текст
     """
-    filename = os.path.basename(file_path)
-    async with aiofiles.open(file_path, "rb") as f:
-        file_bytes = await f.read()
-    return extract_text(file_bytes, filename)
+    try:
+        filename = Path(file_path).name
+        async with aiofiles.open(file_path, "rb") as f:
+            file_bytes = await f.read()
+        return extract_text(file_bytes, filename)
+    except Exception as e:
+        log.error("ocr_failed", filename=filename, error=str(e))
+        return ""
 
 
 def detect_language(text: str) -> str:

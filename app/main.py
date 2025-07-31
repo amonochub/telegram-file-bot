@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import os
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -47,7 +47,7 @@ async def main():
     dp.include_router(main_router)
 
     # Создаем временную директорию
-    os.makedirs("temp", exist_ok=True)
+    Path("temp").mkdir(exist_ok=True)
 
     logger.info("✅ Бот запущен и готов к работе")
     try:

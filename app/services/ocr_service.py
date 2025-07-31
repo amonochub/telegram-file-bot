@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import fitz  # PyMuPDF
 import ocrmypdf
@@ -20,7 +20,7 @@ import structlog
 log = structlog.get_logger(__name__)
 
 
-def run_ocr(src: Path) -> tuple[Path, str]:
+def run_ocr(src: Path) -> Tuple[Path, str]:
     """
     Запускает OCR, *сохраняя* оригинальный вид PDF.
     Возвращает путь к searchable-PDF и весь распознанный текст.
@@ -53,7 +53,7 @@ def run_ocr(src: Path) -> tuple[Path, str]:
 
 
 # Глобальные функции для использования в обработчиках
-async def perform_ocr(pdf_path: str) -> tuple[Path, str]:
+async def perform_ocr(pdf_path: str) -> Tuple[Path, str]:
     """Выполняет OCR PDF документа и возвращает (путь к PDF, текст)"""
     try:
         loop = asyncio.get_event_loop()

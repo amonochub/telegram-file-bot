@@ -10,7 +10,7 @@ import datetime as dt
 import decimal
 import json
 import xml.etree.ElementTree as ET
-from typing import Final, Optional, List, Dict, Any
+from typing import Final, Optional, List, Dict, Any, Tuple
 
 import aiohttp
 import asyncio
@@ -18,11 +18,18 @@ import redis.asyncio as aioredis
 import structlog
 
 from app.config import settings
+from app.utils.types import RateValue, CurrencyCode, CacheKey, BusinessDate, ApiResponse
 
 log = structlog.get_logger(__name__)
 
 CBR_URL: Final[str] = "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}"
-ISO2CBR: Final[dict[str, str]] = {"USD": "R01235", "EUR": "R01239", "CNY": "R01375", "AED": "R01230", "TRY": "R01700J"}
+ISO2CBR: Final[Dict[CurrencyCode, str]] = {
+    CurrencyCode("USD"): "R01235",
+    CurrencyCode("EUR"): "R01239",
+    CurrencyCode("CNY"): "R01375",
+    CurrencyCode("AED"): "R01230",
+    CurrencyCode("TRY"): "R01700J",
+}
 TTL: Final[int] = 60 * 60 * 12  # 12 часов
 
 # Коэффициент для пересчета официального курса в курс покупки
@@ -37,43 +44,39 @@ async def _get_redis():
     return _get_redis._redis  # type: ignore[attr-defined]
 
 
-async def has_rate(date: dt.date) -> bool:
+async def has_rate(date: BusinessDate) -> bool:
     """
     Проверяет, есть ли курс на указанную дату.
-    
+
     Args:
         date: Дата для проверки
-        
+
     Returns:
         True если курс доступен, False если нет
     """
     try:
         # Сначала проверяем кэш
         redis_client = await _get_redis()
-        key = f"cbr:{date.isoformat()}"
+        key: CacheKey = CacheKey(f"cbr:{date.isoformat()}")
         cached = await redis_client.get(key)
-        
+
         if cached:
             log.info("cbr_has_rate_cache_hit", date=str(date))
             return True
-        
+
         # Если нет в кэше, запрашиваем API
         rates, real_date = await _fetch_rates_from_api(date)
-        
+
         # КРИТИЧЕСКАЯ ПРОВЕРКА: Реальная дата должна соответствовать запрошенной
         if real_date != date:
-            log.warning(
-                "cbr_has_rate_date_mismatch",
-                requested_date=str(date),
-                real_date=str(real_date)
-            )
+            log.warning("cbr_has_rate_date_mismatch", requested_date=str(date), real_date=str(real_date))
             # Если запрашиваем будущую дату, а получили прошлую - курс недоступен
             if date > real_date:
                 log.info("cbr_has_rate_future_not_available", requested_date=str(date), real_date=str(real_date))
                 return False
             # Если получили более старые данные - тоже считаем недоступным
             return False
-        
+
         # Если получили данные и даты совпадают
         if rates:
             log.info("cbr_has_rate_api_hit", date=str(date), currencies_count=len(rates))
@@ -81,19 +84,19 @@ async def has_rate(date: dt.date) -> bool:
         else:
             log.warning("cbr_has_rate_no_data", date=str(date))
             return False
-            
+
     except Exception as e:
         log.error("cbr_has_rate_error", date=str(date), error=str(e))
         return False
 
 
-async def _fetch_rates_from_api(date: dt.date) -> tuple[dict[str, float], dt.date]:
+async def _fetch_rates_from_api(date: BusinessDate) -> Tuple[Dict[CurrencyCode, float], BusinessDate]:
     """
     Запрашивает курсы валют с сайта ЦБ для указанной даты.
-    
+
     Args:
         date: Дата для запроса
-        
+
     Returns:
         Кортеж (словарь курсов, реальная дата из ответа)
     """
@@ -110,7 +113,7 @@ async def _fetch_rates_from_api(date: dt.date) -> tuple[dict[str, float], dt.dat
     date_req = actual_date.strftime("%d/%m/%Y")
     url = CBR_URL.format(for_date=date_req)
     log.info("cbr_request", url=url, requested_date=str(date), actual_date=str(actual_date))
-    
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
@@ -118,51 +121,51 @@ async def _fetch_rates_from_api(date: dt.date) -> tuple[dict[str, float], dt.dat
                     log.warning("cbr_http_fail", status=resp.status, url=url)
                     return {}, date
                 xml_text = await resp.text()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+    except Exception as e:
         log.error("cbr_http_exc", url=url, error=str(e))
         return {}, date
 
     rates, real_date = await _parse_rates(xml_text)
-    log.info(
-        "cbr_parsed_rates", real_date=str(real_date), currencies_found=list(rates.keys())
-    )
+    log.info("cbr_parsed_rates", real_date=str(real_date), currencies_found=list(rates.keys()))
 
     return rates, real_date
 
 
-async def save_pending_calc(user_id: int, date: dt.date, currency: str, amount: decimal.Decimal, commission: decimal.Decimal) -> bool:
+async def save_pending_calc(
+    user_id: int, date: BusinessDate, currency: CurrencyCode, amount: decimal.Decimal, commission: decimal.Decimal
+) -> bool:
     """
     Сохраняет отложенный расчёт в Redis.
-    
+
     Args:
         user_id: ID пользователя
         date: Дата для расчёта
         currency: Валюта
         amount: Сумма
         commission: Комиссия в процентах
-        
+
     Returns:
         True если сохранено успешно, False если ошибка
     """
     try:
         redis_client = await _get_redis()
         key = f"pending_calc:{user_id}:{date.isoformat()}"
-        
+
         data = {
             "user_id": user_id,
             "date": date.isoformat(),
             "currency": currency,
             "amount": str(amount),
             "commission": str(commission),
-            "created_at": dt.datetime.now().isoformat()
+            "created_at": dt.datetime.now().isoformat(),
         }
-        
+
         # Сохраняем с TTL 24 часа
-        await redis_client.set(key, json.dumps(data, ensure_ascii=False), ex=60*60*24)
-        
+        await redis_client.set(key, json.dumps(data, ensure_ascii=False), ex=60 * 60 * 24)
+
         log.info("cbr_pending_calc_saved", user_id=user_id, date=str(date), currency=currency)
         return True
-        
+
     except Exception as e:
         log.error("cbr_save_pending_calc_error", user_id=user_id, date=str(date), error=str(e))
         return False
@@ -171,17 +174,17 @@ async def save_pending_calc(user_id: int, date: dt.date, currency: str, amount: 
 async def get_all_pending() -> List[Dict[str, Any]]:
     """
     Получает все отложенные расчёты из Redis.
-    
+
     Returns:
         Список отложенных расчётов
     """
     try:
         redis_client = await _get_redis()
         pattern = "pending_calc:*"
-        
+
         # Получаем все ключи отложенных расчётов
         keys = await redis_client.keys(pattern)
-        
+
         pending_calcs = []
         for key in keys:
             try:
@@ -191,48 +194,48 @@ async def get_all_pending() -> List[Dict[str, Any]]:
                     pending_calcs.append(calc_data)
             except Exception as e:
                 log.error("cbr_get_pending_calc_error", key=key, error=str(e))
-        
+
         log.info("cbr_get_all_pending", count=len(pending_calcs))
         return pending_calcs
-        
+
     except Exception as e:
         log.error("cbr_get_all_pending_error", error=str(e))
         return []
 
 
-async def remove_pending(user_id: int, date: dt.date) -> bool:
+async def remove_pending(user_id: int, date: BusinessDate) -> bool:
     """
     Удаляет отложенный расчёт из Redis.
-    
+
     Args:
         user_id: ID пользователя
         date: Дата расчёта
-        
+
     Returns:
         True если удалено успешно, False если ошибка
     """
     try:
         redis_client = await _get_redis()
         key = f"pending_calc:{user_id}:{date.isoformat()}"
-        
+
         result = await redis_client.delete(key)
-        
+
         if result > 0:
             log.info("cbr_pending_calc_removed", user_id=user_id, date=str(date))
             return True
         else:
             log.warning("cbr_pending_calc_not_found", user_id=user_id, date=str(date))
             return False
-            
+
     except Exception as e:
         log.error("cbr_remove_pending_error", user_id=user_id, date=str(date), error=str(e))
         return False
 
 
-async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
+async def _parse_rates(xml_text: str) -> Tuple[Dict[str, float], BusinessDate]:
     """Разбирает XML-ответ ЦБ в словарь курсов и возвращает реальную дату."""
     tree = ET.fromstring(xml_text)
-    result: dict[str, float] = {}
+    result: Dict[str, float] = {}
 
     # Извлекаем реальную дату из XML
     date_str = tree.get("Date", "")
@@ -262,8 +265,8 @@ async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
                 continue
             value = value_elem.text.replace(",", ".")  # type: ignore[assignment]
             nominal = int(nominal_elem.text)  # type: ignore[arg-type]
-            result[iso] = float(decimal.Decimal(value) / nominal)
-            log.info("cbr_rate_parsed", iso=iso, rate=result[iso])
+            result[str(iso)] = float(decimal.Decimal(value) / nominal)
+            log.info("cbr_rate_parsed", iso=iso, rate=result[str(iso)])
         except Exception as e:
             log.error("cbr_parse_error", iso=iso, cbr_id=cbr_id, error=str(e))
 
@@ -292,8 +295,8 @@ async def _parse_rates(xml_text: str) -> tuple[dict[str, float], dt.date]:
 
 
 async def get_rate(
-    date: dt.date,
-    currency: str,
+    date: BusinessDate,
+    currency: CurrencyCode,
     *,
     cache_only: bool = False,
     requested_tomorrow: bool = False,
@@ -319,20 +322,26 @@ async def get_rate(
         actual_date = date
 
     # Пробуем найти в кэше по запрошенной дате
-    key = f"cbr:{actual_date.isoformat()}"
-    cached = await redis.get(key)  # type: ignore[misc]
-    if cached:
-        if isinstance(cached, bytes):
-            cached = cached.decode()
-        try:
-            rates: dict[str, float] = json.loads(cached)
-            if currency in rates:
-                # Возвращаем официальный курс ЦБ без наценки
-                official_rate = decimal.Decimal(str(rates[currency]))
-                log.info("cbr_rate_found_cache", currency=currency, official_rate=str(official_rate))
-                return official_rate
-        except Exception as e:  # noqa: BLE001
-            log.warning("cbr_cache_parse_error", error=str(e))
+    key: CacheKey = CacheKey(f"cbr:{actual_date.isoformat()}")
+    try:
+        cached = await redis.get(key)  # type: ignore[misc]
+        if cached:
+            if isinstance(cached, bytes):
+                cached = cached.decode()
+            try:
+                rates: Dict[str, float] = json.loads(cached)
+                currency_str = str(currency)
+                if currency_str in rates:
+                    # Возвращаем официальный курс ЦБ без наценки
+                    official_rate = decimal.Decimal(str(rates[currency_str]))
+                    log.info("cbr_rate_found_cache", currency=currency, official_rate=str(official_rate))
+                    return official_rate
+            except Exception as e:  # noqa: BLE001
+                log.warning("cbr_cache_parse_error", error=str(e))
+    except Exception as e:
+        log.error("cbr_redis_error", error=str(e))
+        if cache_only:
+            return None
 
     if cache_only:
         return None
@@ -348,7 +357,7 @@ async def get_rate(
                     log.warning("cbr_http_fail", status=resp.status, url=url)
                     return None
                 xml_text = await resp.text()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:  # type: ignore[name-defined]
+    except Exception as e:  # type: ignore[name-defined]
         log.error("cbr_http_exc", url=url, error=str(e))
         return None
 
@@ -359,20 +368,11 @@ async def get_rate(
 
     # КРИТИЧЕСКАЯ ПРОВЕРКА: Реальная дата из API должна соответствовать запрошенной дате
     if real_date != actual_date:
-        log.warning(
-            "cbr_date_mismatch",
-            requested_date=str(actual_date),
-            real_date=str(real_date),
-            currency=currency
-        )
+        log.warning("cbr_date_mismatch", requested_date=str(actual_date), real_date=str(real_date), currency=currency)
         # Если запрашиваем завтрашний курс, а получили сегодняшний - это означает,
         # что завтрашний курс ещё не опубликован
         if actual_date > real_date:
-            log.info(
-                "cbr_future_rate_not_available",
-                requested_date=str(actual_date),
-                real_date=str(real_date)
-            )
+            log.info("cbr_future_rate_not_available", requested_date=str(actual_date), real_date=str(real_date))
             return None
         # Если получили более старые данные - тоже не используем их
         log.warning("cbr_using_old_data_rejected", requested_date=str(actual_date), real_date=str(real_date))
@@ -381,32 +381,35 @@ async def get_rate(
     if not rates:
         log.warning("cbr_no_rates_found")
         #  ⬇⬇ Paste fallback cache‑loop here
-        for days_back in range(1, 8):  # Пробуем последние 7 дней
-            check_date = actual_date - dt.timedelta(days=days_back)
-            check_key = f"cbr:{check_date.isoformat()}"
-            cached = await redis.get(check_key)  # type: ignore[misc]
-            if cached:
-                if isinstance(cached, bytes):
-                    cached = cached.decode()
-                try:
-                    rates = json.loads(cached)
-                    if currency in rates:
-                        # Возвращаем официальный курс ЦБ без наценки
-                        official_rate = decimal.Decimal(str(rates[currency]))
-                        log.info(
-                            "cbr_rate_found_previous_day",
-                            requested_date=str(date),
-                            found_date=str(check_date),
-                            currency=currency,
-                            official_rate=str(official_rate),
-                        )
-                        return official_rate
-                except Exception as e:  # noqa: BLE001
-                    log.warning("cbr_cache_parse_error", error=str(e))
+        try:
+            for days_back in range(1, 8):  # Пробуем последние 7 дней
+                check_date = actual_date - dt.timedelta(days=days_back)
+                check_key: CacheKey = CacheKey(f"cbr:{check_date.isoformat()}")
+                cached = await redis.get(check_key)  # type: ignore[misc]
+                if cached:
+                    if isinstance(cached, bytes):
+                        cached = cached.decode()
+                    try:
+                        rates = json.loads(cached)
+                        if currency in rates:
+                            # Возвращаем официальный курс ЦБ без наценки
+                            official_rate = decimal.Decimal(str(rates[currency]))
+                            log.info(
+                                "cbr_rate_found_previous_day",
+                                requested_date=str(date),
+                                found_date=str(check_date),
+                                currency=currency,
+                                official_rate=str(official_rate),
+                            )
+                            return official_rate
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("cbr_cache_parse_error", error=str(e))
+        except Exception as e:
+            log.error("cbr_redis_fallback_error", error=str(e))
         return None
 
     # сохраняем кэш по реальной дате из ЦБ (сохраняем официальные курсы)
-    real_key = f"cbr:{real_date.isoformat()}"
+    real_key: CacheKey = CacheKey(f"cbr:{real_date.isoformat()}")
     await redis.set(real_key, json.dumps(rates, ensure_ascii=False), ex=TTL)  # type: ignore[misc]
     log.info("cbr_cache_saved", key=real_key, rates_count=len(rates))
 
@@ -423,24 +426,24 @@ async def get_rate(
 async def add_subscriber(user_id: int) -> bool:
     """
     Добавляет пользователя в список подписчиков на курсы ЦБ.
-    
+
     Args:
         user_id: ID пользователя
-        
+
     Returns:
         True если добавлен успешно, False если ошибка
     """
     try:
         redis_client = await _get_redis()
         result = await redis_client.sadd("cbr_subscribers", user_id)
-        
+
         if result > 0:
             log.info("cbr_subscriber_added", user_id=user_id)
         else:
             log.info("cbr_subscriber_already_exists", user_id=user_id)
-        
+
         return True
-        
+
     except Exception as e:
         log.error("cbr_add_subscriber_error", user_id=user_id, error=str(e))
         return False
@@ -449,24 +452,24 @@ async def add_subscriber(user_id: int) -> bool:
 async def remove_subscriber(user_id: int) -> bool:
     """
     Удаляет пользователя из списка подписчиков на курсы ЦБ.
-    
+
     Args:
         user_id: ID пользователя
-        
+
     Returns:
         True если удалён успешно, False если ошибка
     """
     try:
         redis_client = await _get_redis()
         result = await redis_client.srem("cbr_subscribers", user_id)
-        
+
         if result > 0:
             log.info("cbr_subscriber_removed", user_id=user_id)
         else:
             log.info("cbr_subscriber_not_found", user_id=user_id)
-        
+
         return True
-        
+
     except Exception as e:
         log.error("cbr_remove_subscriber_error", user_id=user_id, error=str(e))
         return False
@@ -475,19 +478,19 @@ async def remove_subscriber(user_id: int) -> bool:
 async def get_subscribers() -> List[int]:
     """
     Получает список всех подписчиков на курсы ЦБ.
-    
+
     Returns:
         Список ID пользователей-подписчиков
     """
     try:
         redis_client = await _get_redis()
         subscribers_data = await redis_client.smembers("cbr_subscribers")
-        
+
         subscribers = [int(user_id) for user_id in subscribers_data]
         log.info("cbr_get_subscribers", count=len(subscribers))
-        
+
         return subscribers
-        
+
     except Exception as e:
         log.error("cbr_get_subscribers_error", error=str(e))
         return []
@@ -496,20 +499,20 @@ async def get_subscribers() -> List[int]:
 async def is_subscriber(user_id: int) -> bool:
     """
     Проверяет, является ли пользователь подписчиком на курсы ЦБ.
-    
+
     Args:
         user_id: ID пользователя
-        
+
     Returns:
         True если пользователь подписан, False если нет
     """
     try:
         redis_client = await _get_redis()
         result = await redis_client.sismember("cbr_subscribers", user_id)
-        
+
         log.debug("cbr_check_subscriber", user_id=user_id, is_subscriber=result)
         return result
-        
+
     except Exception as e:
         log.error("cbr_check_subscriber_error", user_id=user_id, error=str(e))
         return False
@@ -518,16 +521,16 @@ async def is_subscriber(user_id: int) -> bool:
 async def toggle_subscription(user_id: int) -> Dict[str, Any]:
     """
     Переключает подписку пользователя на курсы ЦБ.
-    
+
     Args:
         user_id: ID пользователя
-        
+
     Returns:
         Словарь с результатом: {"subscribed": bool, "action": str}
     """
     try:
         is_sub = await is_subscriber(user_id)
-        
+
         if is_sub:
             # Отписываем
             success = await remove_subscriber(user_id)
@@ -535,7 +538,7 @@ async def toggle_subscription(user_id: int) -> Dict[str, Any]:
                 return {
                     "subscribed": False,
                     "action": "unsubscribed",
-                    "message": "❌ <b>Вы отписаны от уведомлений о курсах ЦБ.</b>"
+                    "message": "❌ <b>Вы отписаны от уведомлений о курсах ЦБ.</b>",
                 }
         else:
             # Подписываем
@@ -544,20 +547,16 @@ async def toggle_subscription(user_id: int) -> Dict[str, Any]:
                 return {
                     "subscribed": True,
                     "action": "subscribed",
-                    "message": "✅ <b>Вы подписаны на уведомления о курсах ЦБ!</b>\n\n📅 <b>Вы будете получать уведомления о появлении новых курсов.</b>"
+                    "message": "✅ <b>Вы подписаны на уведомления о курсах ЦБ!</b>\n\n📅 <b>Вы будете получать уведомления о появлении новых курсов.</b>",
                 }
-        
+
         # Ошибка
         return {
             "subscribed": is_sub,
             "action": "error",
-            "message": "❌ <b>Произошла ошибка при изменении подписки.</b>"
+            "message": "❌ <b>Произошла ошибка при изменении подписки.</b>",
         }
-        
+
     except Exception as e:
         log.error("cbr_toggle_subscription_error", user_id=user_id, error=str(e))
-        return {
-            "subscribed": False,
-            "action": "error",
-            "message": "❌ <b>Произошла ошибка при изменении подписки.</b>"
-        }
+        return {"subscribed": False, "action": "error", "message": "❌ <b>Произошла ошибка при изменении подписки.</b>"}

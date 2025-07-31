@@ -1,6 +1,9 @@
 import os
 import tempfile
+from pathlib import Path
+from typing import List, Optional
 
+import aiofiles
 import structlog
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -10,6 +13,8 @@ from aiogram.types import CallbackQuery, FSInputFile, Message, InlineKeyboardBut
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.config import settings
+from app.constants.messages import MAIN_MENU_WELCOME
+from app.keyboards.menu import main_menu
 from app.services.yandex_disk_service import YandexDiskService
 from app.config import USER_FILES_DIR
 
@@ -119,16 +124,16 @@ async def cleanup_command(message: Message):
 
     try:
         from app.utils.cleanup import cleanup_temp_files, get_temp_dir_size, format_size
-        
+
         # Получаем размер до очистки
         size_before = get_temp_dir_size()
-        
+
         # Очищаем файлы старше 1 часа
         deleted_count = cleanup_temp_files(max_age_hours=1)
-        
+
         # Получаем размер после очистки
         size_after = get_temp_dir_size()
-        
+
         info_text = (
             f"🧹 <b>Очистка временных файлов завершена</b>\n\n"
             f"🗑️ <b>Удалено файлов:</b> {deleted_count}\n"
@@ -136,9 +141,9 @@ async def cleanup_command(message: Message):
             f"💾 <b>Текущий размер temp:</b> {format_size(size_after)}\n\n"
             f"⏰ <b>Удалены файлы старше 1 часа</b>"
         )
-        
+
         await message.answer(info_text, parse_mode="HTML")
-        
+
     except Exception as e:
         logger.error("Error during cleanup", error=str(e))
         await message.answer("❌ Ошибка при очистке временных файлов")
@@ -181,8 +186,8 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
         builder = InlineKeyboardBuilder()
         user_root = USER_FILES_DIR
         if path != user_root and path.startswith(user_root):
-            parent_path = os.path.dirname(path.rstrip("/"))
-            builder.button(text="⬅️ Назад", callback_data=f"browse:{get_path_id(parent_path)}")
+            parent_path = Path(path.rstrip("/")).parent
+            builder.button(text="⬅️ Назад", callback_data=f"browse:{get_path_id(str(parent_path))}")
 
         # Разделяем папки и файлы
         folders = [f for f in files_list if f["type"] == "dir"]
@@ -208,20 +213,17 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
             elif item["type"] == "file":
                 file = item["data"]
                 file_size = yandex_service.format_file_size(file["size"])
-                
+
                 # Создаем строку с кнопками для файла
                 file_row = []
                 file_row.append(
                     InlineKeyboardButton(
                         text=f"📄 {file['name']} ({file_size})",
-                        callback_data=f"download_file:{get_path_id(file['path'])}"
+                        callback_data=f"download_file:{get_path_id(file['path'])}",
                     )
                 )
                 file_row.append(
-                    InlineKeyboardButton(
-                        text="🗑️",
-                        callback_data=f"delete_file:{get_path_id(file['path'])}"
-                    )
+                    InlineKeyboardButton(text="🗑️", callback_data=f"delete_file:{get_path_id(file['path'])}")
                 )
                 builder.row(*file_row)
 
@@ -267,10 +269,73 @@ async def show_directory(message: Message, path: str, page: int = 0, edit: bool 
 
 
 @router.callback_query(F.data.startswith("browse:"))
-async def browse_callback(callback: CallbackQuery):
-    path = get_path_by_id(callback.data.replace("browse:", ""))
-    await show_directory(callback.message, path, page=0, edit=True)
-    await callback.answer()
+async def browse_folder(callback: CallbackQuery):
+    """Показывает содержимое папки на Яндекс.Диске"""
+    try:
+        path = get_path_by_id(callback.data.replace("browse:", ""))
+
+        # Получаем список файлов
+        yandex_service = YandexDiskService(settings.yandex_disk_token)
+        files_info = await yandex_service.get_files_list(path)
+
+        if not files_info:
+            text = f"📁 Папка пуста: {path}"
+            await callback.message.edit_text(text, reply_markup=main_menu())
+            return
+
+        # Разделяем на папки и файлы
+        folders = [f for f in files_info if f["type"] == "dir"]
+        files = [f for f in files_info if f["type"] == "file"]
+
+        # Создаем клавиатуру
+        builder = InlineKeyboardBuilder()
+
+        # Кнопка "Назад"
+        if path != "/":
+            parent_path = Path(path.rstrip("/")).parent
+            builder.button(text="⬅️ Назад", callback_data=f"browse:{get_path_id(str(parent_path))}")
+
+        # Папки
+        for folder in folders:
+            builder.button(text=f"📁 {folder['name']}", callback_data=f"browse:{get_path_id(folder['path'])}")
+
+        # Файлы
+        for file in files:
+            file_size = yandex_service.format_file_size(file.get("size", 0))
+            builder.button(
+                text=f"📄 {file['name']} ({file_size})", callback_data=f"download_file:{get_path_id(file['path'])}"
+            )
+            builder.button(text=f"🗑️ Удалить {file['name']}", callback_data=f"delete_file:{get_path_id(file['path'])}")
+
+        # Пагинация (если нужно)
+        total_items = len(folders) + len(files)
+        items_per_page = 10
+        total_pages = (total_items + items_per_page - 1) // items_per_page
+        page = 0  # Упрощенная пагинация
+
+        if total_pages > 1:
+            pag_row = []
+            if page > 0:
+                pag_row.append(
+                    InlineKeyboardButton(text="⬅️", callback_data=f"browse_page:{get_path_id(path)}:{page - 1}")
+                )
+            pag_row.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+            if page < total_pages - 1:
+                pag_row.append(
+                    InlineKeyboardButton(text="➡️", callback_data=f"browse_page:{get_path_id(path)}:{page + 1}")
+                )
+            builder.row(*pag_row)
+
+        # Кнопка создания папки
+        builder.button(text="➕ Новая папка", callback_data=f"browse_mkdir:{get_path_id(path)}")
+
+        text = f"📁 <b>{path}</b>\n\n📊 Папок: {len(folders)}  Файлов: {len(files)}  (стр. {page + 1}/{total_pages})"
+
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+    except Exception as e:
+        error_text = f"❌ Ошибка загрузки папки: {e}"
+        await callback.message.edit_text(error_text, reply_markup=main_menu())
 
 
 @router.callback_query(F.data.startswith("browse_page:"))
@@ -295,8 +360,8 @@ async def browse_mkdir_prompt(callback: CallbackQuery, state: FSMContext):
 async def browse_mkdir_create(msg: Message, state: FSMContext):
     data = await state.get_data()
     base_path = data.get("mkdir_path", "/")
-    new_path = os.path.join(base_path, msg.text.strip())
-    success = await yandex_service.create_folder(new_path)
+    new_path = Path(base_path) / msg.text.strip()
+    success = await yandex_service.create_folder(str(new_path))
     if success:
         await msg.answer("✅ Папка создана")
     else:
@@ -306,86 +371,78 @@ async def browse_mkdir_create(msg: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("download_file:"))
-async def download_callback(callback: CallbackQuery):
-    file_path = get_path_by_id(callback.data.replace("download_file:", ""))
-    file_name = os.path.basename(file_path)
-
+async def download_file(callback: CallbackQuery):
+    """Скачивает файл с Яндекс.Диска"""
     try:
-        # Показываем сообщение о загрузке
-        loading_msg = await callback.message.answer("⏳ Скачиваю файл...")
+        file_path = get_path_by_id(callback.data.replace("download_file:", ""))
+        file_name = Path(file_path).name
 
-        # Скачиваем файл с Яндекс.Диска во временную папку
+        # Создаем временный файл
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file_name}") as temp_file:
             temp_path = temp_file.name
 
         # Скачиваем файл
+        yandex_service = YandexDiskService(settings.yandex_disk_token)
         success = await yandex_service.download_file(file_path, temp_path)
 
-        if success and os.path.exists(temp_path):
-            # Отправляем файл в Telegram
-            from aiogram.types import FSInputFile
-
-            await callback.message.answer_document(
-                FSInputFile(temp_path, filename=file_name), caption=f"📥 Файл: {file_name}"
-            )
-
+        if success and Path(temp_path).exists():
+            # Отправляем файл
+            await callback.message.answer(FSInputFile(temp_path, filename=file_name), caption=f"📥 Файл: {file_name}")
             # Удаляем временный файл
-            os.unlink(temp_path)
-
-            # Удаляем сообщение о загрузке
-            await loading_msg.delete()
+            Path(temp_path).unlink(missing_ok=True)
         else:
-            await loading_msg.edit_text(f"❌ Не удалось скачать файл {file_name}")
+            await callback.message.answer(f"❌ Не удалось скачать файл {file_name}")
 
     except Exception as e:
         logger.error(f"Ошибка скачивания файла {file_path}: {e}")
         await callback.message.answer(f"❌ Ошибка при скачивании файла {file_name}: {str(e)}")
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("delete_file:"))
-async def delete_file_callback(callback: CallbackQuery):
-    file_path = get_path_by_id(callback.data.replace("delete_file:", ""))
-    file_name = os.path.basename(file_path)
-    
-    # Создаем клавиатуру для подтверждения удаления
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Да, удалить", callback_data=f"confirm_delete:{callback.data.replace('delete_file:', '')}")
-    builder.button(text="❌ Отмена", callback_data=f"cancel_delete:{callback.data.replace('delete_file:', '')}")
-    builder.adjust(2)
-    
-    await callback.message.answer(
-        f"🗑️ Вы уверены, что хотите удалить файл <b>{file_name}</b>?\n\n"
-        f"📁 Путь: <code>{file_path}</code>\n\n"
-        "⚠️ Это действие нельзя отменить!",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
+async def delete_file(callback: CallbackQuery):
+    """Удаляет файл с Яндекс.Диска"""
+    try:
+        file_path = get_path_by_id(callback.data.replace("delete_file:", ""))
+        file_name = Path(file_path).name
+
+        # Создаем клавиатуру подтверждения
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="✅ Да, удалить", callback_data=f"confirm_delete:{callback.data.replace('delete_file:', '')}"
+        )
+        builder.button(text="❌ Отмена", callback_data=f"cancel_delete:{callback.data.replace('delete_file:', '')}")
+
+        text = (
+            f"🗑️ Вы уверены, что хотите удалить файл <b>{file_name}</b>?\n\n"
+            f"📁 Путь: <code>{file_path}</code>\n\n"
+            "⚠️ <b>Это действие нельзя отменить!</b>"
+        )
+
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка при удалении файла: {str(e)}")
 
 
 @router.callback_query(F.data.startswith("confirm_delete:"))
-async def confirm_delete_callback(callback: CallbackQuery):
-    file_path = get_path_by_id(callback.data.replace("confirm_delete:", ""))
-    file_name = os.path.basename(file_path)
-    
+async def confirm_delete_file(callback: CallbackQuery):
+    """Подтверждает удаление файла"""
     try:
-        # Показываем сообщение о удалении
-        loading_msg = await callback.message.answer("🗑️ Удаляю файл...")
-        
-        # Удаляем файл с Яндекс.Диска
+        file_path = get_path_by_id(callback.data.replace("confirm_delete:", ""))
+        file_name = Path(file_path).name
+
+        # Удаляем файл
+        yandex_service = YandexDiskService(settings.yandex_disk_token)
         success = await yandex_service.remove_file(file_path)
-        
+
         if success:
-            await loading_msg.edit_text(f"✅ Файл <b>{file_name}</b> успешно удален!")
+            await callback.message.edit_text(f"✅ Файл <b>{file_name}</b> успешно удален!")
         else:
-            await loading_msg.edit_text(f"❌ Не удалось удалить файл {file_name}")
-            
+            await callback.message.edit_text(f"❌ Не удалось удалить файл {file_name}")
+
     except Exception as e:
         logger.error(f"Ошибка удаления файла {file_path}: {e}")
         await callback.message.answer(f"❌ Ошибка при удалении файла {file_name}: {str(e)}")
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("cancel_delete:"))

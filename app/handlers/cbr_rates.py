@@ -76,48 +76,47 @@ async def rates_menu_start(msg: Message, state: FSMContext):
 async def process_rate_request(cb: CallbackQuery, state: FSMContext):
     """Обработка выбора дня или валюты"""
     data_parts = cb.data.split("_")
-    
+
     if len(data_parts) == 2:
         # Выбор дня
         day_type = data_parts[1]  # today или tomorrow
-        
+
         await state.update_data(day_type=day_type)
         await state.set_state(RateStates.choosing_currency)
-        
+
         day_text = "завтра" if day_type == "tomorrow" else "сегодня"
         await cb.message.edit_text(
-            f"💱 <b>Курс ЦБ на {day_text}</b>\n\n"
-            "📋 <b>Выберите валюту:</b>",
+            f"💱 <b>Курс ЦБ на {day_text}</b>\n\n" "📋 <b>Выберите валюту:</b>",
             parse_mode="HTML",
             reply_markup=currency_kb,
         )
-        
+
     elif len(data_parts) == 2 and data_parts[1] in ["USD", "EUR", "CNY", "AED", "TRY"]:
         # Выбор валюты
         currency = data_parts[1]
         state_data = await state.get_data()
         day_type = state_data.get("day_type", "today")
-        
+
         # Получаем сервис курсов ЦБ
         cbr_service = await get_cbr_service(cb.bot)
-        
+
         if day_type == "tomorrow":
             # Обработка завтрашнего курса
             result = await cbr_service.process_tomorrow_rate(cb.from_user.id, currency)
         else:
             # Обработка сегодняшнего курса
             result = await cbr_service.process_today_rate(cb.from_user.id, currency)
-        
+
         # Отправляем результат
         await cb.message.edit_text(
             result["message"],
             parse_mode="HTML",
             reply_markup=main_menu(),
         )
-        
+
         # Очищаем состояние
         await state.clear()
-    
+
     await cb.answer()
 
 
@@ -125,32 +124,32 @@ async def process_rate_request(cb: CallbackQuery, state: FSMContext):
 async def direct_currency_input(msg: Message, state: FSMContext):
     """Прямой ввод валюты (если пользователь ввёл код валюты)"""
     currency = msg.text.upper()
-    
+
     # Проверяем, что мы в процессе выбора валюты
     current_state = await state.get_state()
     if current_state != RateStates.choosing_currency.state:
         return
-    
+
     state_data = await state.get_data()
     day_type = state_data.get("day_type", "today")
-    
+
     # Получаем сервис курсов ЦБ
     cbr_service = await get_cbr_service(msg.bot)
-    
+
     if day_type == "tomorrow":
         # Обработка завтрашнего курса
         result = await cbr_service.process_tomorrow_rate(msg.from_user.id, currency)
     else:
         # Обработка сегодняшнего курса
         result = await cbr_service.process_today_rate(msg.from_user.id, currency)
-    
+
     # Отправляем результат
     await msg.answer(
         result["message"],
         parse_mode="HTML",
         reply_markup=main_menu(),
     )
-    
+
     # Очищаем состояние
     await state.clear()
 
@@ -158,19 +157,7 @@ async def direct_currency_input(msg: Message, state: FSMContext):
 @router.message(F.text.regexp(r"^(курс|курсы|цб|cbr)$", flags=re.IGNORECASE))
 async def quick_rate_request(msg: Message, state: FSMContext):
     """Быстрый запрос курса по ключевым словам"""
-    await rates_menu_start(msg, state) 
-
-
-import structlog
-from aiogram import F, Router
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
-
-from app.services.cbr_rate_service import get_cbr_service
-from app.keyboards.menu import main_menu
-
-log = structlog.get_logger()
-router = Router()
+    await rates_menu_start(msg, state)
 
 
 @router.message(Command("cbr_subscribe"))
@@ -180,32 +167,23 @@ async def cmd_cbr_subscribe(message: Message) -> None:
     """
     try:
         user_id = message.from_user.id
-        
+
         # Переключаем подписку
         cbr_service = await get_cbr_service(message.bot)
         result = await cbr_service.toggle_subscription(user_id)
-        
+
         # Отправляем результат пользователю
-        await message.answer(
-            result["message"],
-            parse_mode="HTML",
-            reply_markup=main_menu()
-        )
-        
-        log.info(
-            "cbr_subscription_toggled",
-            user_id=user_id,
-            action=result["action"],
-            subscribed=result["subscribed"]
-        )
-        
+        await message.answer(result["message"], parse_mode="HTML", reply_markup=main_menu())
+
+        log.info("cbr_subscription_toggled", user_id=user_id, action=result["action"], subscribed=result["subscribed"])
+
     except Exception as e:
         log.error("cbr_subscribe_error", user_id=message.from_user.id, error=str(e))
         await message.answer(
             "❌ <b>Произошла ошибка при изменении подписки.</b>\n\n"
             "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
             parse_mode="HTML",
-            reply_markup=main_menu()
+            reply_markup=main_menu(),
         )
 
 
@@ -216,30 +194,27 @@ async def cbr_subscribe_callback(callback: CallbackQuery) -> None:
     """
     try:
         user_id = callback.from_user.id
-        
+
         # Переключаем подписку
         cbr_service = await get_cbr_service(callback.bot)
         result = await cbr_service.toggle_subscription(user_id)
-        
+
         # Отправляем результат пользователю
-        await callback.message.edit_text(
-            result["message"],
-            parse_mode="HTML"
-        )
-        
+        await callback.message.edit_text(result["message"], parse_mode="HTML")
+
         log.info(
             "cbr_subscription_toggled_callback",
             user_id=user_id,
             action=result["action"],
-            subscribed=result["subscribed"]
+            subscribed=result["subscribed"],
         )
-        
+
     except Exception as e:
         log.error("cbr_subscribe_callback_error", user_id=callback.from_user.id, error=str(e))
         await callback.message.edit_text(
             "❌ <b>Произошла ошибка при изменении подписки.</b>\n\n"
             "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
     finally:
         await callback.answer()
@@ -252,11 +227,11 @@ async def cmd_cbr_status(message: Message) -> None:
     """
     try:
         user_id = message.from_user.id
-        
+
         # Проверяем статус подписки
         cbr_service = await get_cbr_service(message.bot)
         is_subscribed = await cbr_service.is_subscriber(user_id)
-        
+
         if is_subscribed:
             status_message = (
                 "✅ <b>Вы подписаны на уведомления о курсах ЦБ</b>\n\n"
@@ -269,24 +244,16 @@ async def cmd_cbr_status(message: Message) -> None:
                 "📅 <b>Для подписки используйте команду /cbr_subscribe</b>\n\n"
                 "🔔 <b>После подписки вы будете получать уведомления о появлении новых курсов.</b>"
             )
-        
-        await message.answer(
-            status_message,
-            parse_mode="HTML",
-            reply_markup=main_menu()
-        )
-        
-        log.info(
-            "cbr_status_checked",
-            user_id=user_id,
-            is_subscribed=is_subscribed
-        )
-        
+
+        await message.answer(status_message, parse_mode="HTML", reply_markup=main_menu())
+
+        log.info("cbr_status_checked", user_id=user_id, is_subscribed=is_subscribed)
+
     except Exception as e:
         log.error("cbr_status_error", user_id=message.from_user.id, error=str(e))
         await message.answer(
             "❌ <b>Произошла ошибка при проверке статуса подписки.</b>\n\n"
             "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
             parse_mode="HTML",
-            reply_markup=main_menu()
-        ) 
+            reply_markup=main_menu(),
+        )

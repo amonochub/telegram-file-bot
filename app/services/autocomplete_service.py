@@ -1,4 +1,5 @@
 import json
+
 # mypy: disallow-untyped-defs
 
 from datetime import datetime

@@ -1,5 +1,6 @@
 import os
 import tempfile
+from pathlib import Path
 
 import structlog
 from aiogram import F, Router
@@ -89,14 +90,14 @@ async def process_pdf_ocr(callback_query):
         with tempfile.NamedTemporaryFile(delete=False, suffix="_ocr.pdf") as temp_output:
             temp_output_path = temp_output.name
         await callback_query.bot.download_file(file_telegram_info.file_path, temp_input_path)
-        
+
         # Выполняем OCR
         try:
             ocr_pdf_path, full_text = await perform_ocr(temp_input_path)
             ocr_result = {"success": True, "text": [full_text], "pages_count": 1, "languages": ["rus+eng"]}
         except Exception as e:
             ocr_result = {"success": False, "error": str(e)}
-        
+
         if ocr_result["success"]:
             ocr_filename = file_info["file_name"].replace(".pdf", "_ocr.pdf")
             remote_dir = f"{settings.upload_dir}/{user_id}/ocr_documents"
@@ -108,7 +109,7 @@ async def process_pdf_ocr(callback_query):
             # TXT
             with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp_txt:
                 txt_path = tmp_txt.name
-            with open(txt_path, 'w', encoding='utf-8') as f:
+            with open(txt_path, "w", encoding="utf-8") as f:
                 f.write(full_text)
             txt_remote = pdf_remote.replace(".pdf", ".txt")
             txt_url = await yandex_service.upload_file(txt_path, txt_remote)
@@ -116,8 +117,9 @@ async def process_pdf_ocr(callback_query):
             # DOCX
             with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
                 tmp_docx_path = tmp_docx.name
-            from docx import Document
-            doc = Document()
+            from docx import Document as DocxDocument
+
+            doc = DocxDocument()
             doc.add_paragraph(full_text)
             doc.save(tmp_docx_path)
             await callback_query.message.answer_document(
@@ -175,8 +177,8 @@ async def process_pdf_ocr(callback_query):
             await callback_query.message.edit_text("❌ Ошибка загрузки обработанного файла")
             await callback_query.message.answer(f"❌ Ошибка OCR: {ocr_result['error']}", reply_markup=main_menu())
         for temp_path in [temp_input_path, temp_output_path]:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            if Path(temp_path).exists():
+                Path(temp_path).unlink()
         handle_pdf_document.temp_files[file_key]["ocr_result"] = ocr_result
     except Exception as e:
         logger.error("Error processing PDF OCR", error=str(e))
