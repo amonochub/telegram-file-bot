@@ -7,8 +7,38 @@ import asyncio
 import decimal
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import patch
 
 from app.services.cbr_rate_service import CBRRateService, get_cbr_service, cleanup_cbr_service
+
+
+@pytest.fixture
+def mock_rates_cache():
+    """Мок для rates_cache функций"""
+    return {
+        'get_rate': AsyncMock(),
+        'has_rate': AsyncMock(),
+        'save_pending_calc': AsyncMock(),
+        'get_all_pending': AsyncMock(),
+        'remove_pending': AsyncMock(),
+        'add_subscriber': AsyncMock(),
+        'remove_subscriber': AsyncMock(),
+        'get_subscribers': AsyncMock(),
+        'is_subscriber': AsyncMock(),
+        'toggle_subscription': AsyncMock()
+    }
+
+
+@pytest.fixture
+def mock_bot():
+    """Мок для бота"""
+    return MagicMock()
+
+
+@pytest.fixture
+def service(mock_bot):
+    """Создаёт экземпляр CBRRateService с мок-ботом"""
+    return CBRRateService(bot=mock_bot)
 
 
 class TestCBRRateService:
@@ -287,6 +317,129 @@ class TestCBRRateService:
         mock_task1.cancel.assert_called_once()
         mock_task2.cancel.assert_called_once()
         assert len(service._subscription_tasks) == 0
+
+    @pytest.mark.asyncio
+    async def test_send_message_safe_success(self, service, mock_bot):
+        """Тест успешной отправки сообщения"""
+        mock_bot.send_message.return_value = None
+        
+        result = await service.send_message_safe(123, "test message")
+        
+        assert result is True
+        mock_bot.send_message.assert_called_once_with(123, "test message")
+    
+    @pytest.mark.asyncio
+    async def test_send_message_safe_bot_blocked(self, service, mock_bot):
+        """Тест отправки сообщения заблокированному пользователю"""
+        mock_bot.send_message.side_effect = Exception("bot was blocked by the user")
+        
+        result = await service.send_message_safe(123, "test message")
+        
+        assert result is False
+        mock_bot.send_message.assert_called_once_with(123, "test message")
+    
+    @pytest.mark.asyncio
+    async def test_send_message_safe_no_bot(self):
+        """Тест отправки сообщения без бота"""
+        service = CBRRateService(bot=None)
+        
+        result = await service.send_message_safe(123, "test message")
+        
+        assert result is False
+    
+    @pytest.mark.asyncio
+    async def test_notify_all_subscribers_success(self, service, mock_bot, mock_rates_cache):
+        """Тест уведомления всех подписчиков"""
+        mock_rates_cache.get_subscribers.return_value = [123, 456]
+        mock_bot.send_message.return_value = None
+        
+        result = await service.notify_all_subscribers("test message")
+        
+        assert result["sent"] == 2
+        assert result["failed"] == 0
+        assert result["total"] == 2
+        assert mock_bot.send_message.call_count == 2
+    
+    @pytest.mark.asyncio
+    async def test_notify_all_subscribers_partial_failure(self, service, mock_bot, mock_rates_cache):
+        """Тест частичного сбоя при уведомлении подписчиков"""
+        mock_rates_cache.get_subscribers.return_value = [123, 456, 789]
+        mock_bot.send_message.side_effect = [
+            None,  # 123 - успех
+            Exception("bot was blocked"),  # 456 - сбой
+            None  # 789 - успех
+        ]
+        
+        result = await service.notify_all_subscribers("test message")
+        
+        assert result["sent"] == 2
+        assert result["failed"] == 1
+        assert result["total"] == 3
+    
+    @pytest.mark.asyncio
+    async def test_add_subscriber_success(self, service, mock_rates_cache):
+        """Тест успешного добавления подписчика"""
+        with patch('app.services.cbr_rate_service.add_subscriber') as mock_add:
+            mock_add.return_value = True
+            
+            result = await service.add_subscriber(123)
+            
+            assert result is True
+            mock_add.assert_called_once_with(123)
+    
+    @pytest.mark.asyncio
+    async def test_remove_subscriber_success(self, service, mock_rates_cache):
+        """Тест успешного удаления подписчика"""
+        with patch('app.services.cbr_rate_service.remove_subscriber') as mock_remove:
+            mock_remove.return_value = True
+            
+            result = await service.remove_subscriber(123)
+            
+            assert result is True
+            mock_remove.assert_called_once_with(123)
+    
+    @pytest.mark.asyncio
+    async def test_is_subscriber_success(self, service, mock_rates_cache):
+        """Тест проверки подписки"""
+        with patch('app.services.cbr_rate_service.is_subscriber') as mock_is_sub:
+            mock_is_sub.return_value = True
+            
+            result = await service.is_subscriber(123)
+            
+            assert result is True
+            mock_is_sub.assert_called_once_with(123)
+    
+    @pytest.mark.asyncio
+    async def test_toggle_subscription_subscribe(self, service, mock_rates_cache):
+        """Тест переключения подписки - подписка"""
+        with patch('app.services.cbr_rate_service.toggle_subscription') as mock_toggle:
+            mock_toggle.return_value = {
+                "subscribed": True,
+                "action": "subscribed",
+                "message": "✅ Подписка активна"
+            }
+            
+            result = await service.toggle_subscription(123)
+            
+            assert result["subscribed"] is True
+            assert result["action"] == "subscribed"
+            mock_toggle.assert_called_once_with(123)
+    
+    @pytest.mark.asyncio
+    async def test_toggle_subscription_unsubscribe(self, service, mock_rates_cache):
+        """Тест переключения подписки - отписка"""
+        with patch('app.services.cbr_rate_service.toggle_subscription') as mock_toggle:
+            mock_toggle.return_value = {
+                "subscribed": False,
+                "action": "unsubscribed",
+                "message": "❌ Отписка выполнена"
+            }
+            
+            result = await service.toggle_subscription(123)
+            
+            assert result["subscribed"] is False
+            assert result["action"] == "unsubscribed"
+            mock_toggle.assert_called_once_with(123)
 
 
 class TestGlobalService:

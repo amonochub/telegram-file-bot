@@ -16,6 +16,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from aiogram.filters import Command
 
 from app.keyboards.menu import main_menu
 from app.services.cbr_rate_service import get_cbr_service
@@ -158,3 +159,131 @@ async def direct_currency_input(msg: Message, state: FSMContext):
 async def quick_rate_request(msg: Message, state: FSMContext):
     """Быстрый запрос курса по ключевым словам"""
     await rates_menu_start(msg, state) 
+
+
+import structlog
+from aiogram import F, Router
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
+
+from app.services.cbr_rate_service import cbr_service
+from app.keyboards.menu import main_menu
+
+log = structlog.get_logger()
+router = Router()
+
+
+@router.message(Command("cbr_subscribe"))
+async def cmd_cbr_subscribe(message: Message) -> None:
+    """
+    Обработчик команды /cbr_subscribe - переключает подписку на курсы ЦБ
+    """
+    try:
+        user_id = message.from_user.id
+        
+        # Переключаем подписку
+        result = await cbr_service.toggle_subscription(user_id)
+        
+        # Отправляем результат пользователю
+        await message.answer(
+            result["message"],
+            parse_mode="HTML",
+            reply_markup=main_menu()
+        )
+        
+        log.info(
+            "cbr_subscription_toggled",
+            user_id=user_id,
+            action=result["action"],
+            subscribed=result["subscribed"]
+        )
+        
+    except Exception as e:
+        log.error("cbr_subscribe_error", user_id=message.from_user.id, error=str(e))
+        await message.answer(
+            "❌ <b>Произошла ошибка при изменении подписки.</b>\n\n"
+            "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
+            parse_mode="HTML",
+            reply_markup=main_menu()
+        )
+
+
+@router.callback_query(F.data == "cbr_subscribe")
+async def cbr_subscribe_callback(callback: CallbackQuery) -> None:
+    """
+    Обработчик callback для подписки на курсы ЦБ
+    """
+    try:
+        user_id = callback.from_user.id
+        
+        # Переключаем подписку
+        result = await cbr_service.toggle_subscription(user_id)
+        
+        # Отправляем результат пользователю
+        await callback.message.edit_text(
+            result["message"],
+            parse_mode="HTML"
+        )
+        
+        log.info(
+            "cbr_subscription_toggled_callback",
+            user_id=user_id,
+            action=result["action"],
+            subscribed=result["subscribed"]
+        )
+        
+    except Exception as e:
+        log.error("cbr_subscribe_callback_error", user_id=callback.from_user.id, error=str(e))
+        await callback.message.edit_text(
+            "❌ <b>Произошла ошибка при изменении подписки.</b>\n\n"
+            "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
+            parse_mode="HTML"
+        )
+    finally:
+        await callback.answer()
+
+
+@router.message(Command("cbr_status"))
+async def cmd_cbr_status(message: Message) -> None:
+    """
+    Обработчик команды /cbr_status - показывает статус подписки
+    """
+    try:
+        user_id = message.from_user.id
+        
+        # Проверяем статус подписки
+        is_subscribed = await cbr_service.is_subscriber(user_id)
+        
+        if is_subscribed:
+            status_message = (
+                "✅ <b>Вы подписаны на уведомления о курсах ЦБ</b>\n\n"
+                "📅 <b>Вы будете получать уведомления о появлении новых курсов.</b>\n\n"
+                "🔔 <b>Для отписки используйте команду /cbr_subscribe</b>"
+            )
+        else:
+            status_message = (
+                "❌ <b>Вы не подписаны на уведомления о курсах ЦБ</b>\n\n"
+                "📅 <b>Для подписки используйте команду /cbr_subscribe</b>\n\n"
+                "🔔 <b>После подписки вы будете получать уведомления о появлении новых курсов.</b>"
+            )
+        
+        await message.answer(
+            status_message,
+            parse_mode="HTML",
+            reply_markup=main_menu()
+        )
+        
+        log.info(
+            "cbr_status_checked",
+            user_id=user_id,
+            is_subscribed=is_subscribed
+        )
+        
+    except Exception as e:
+        log.error("cbr_status_error", user_id=message.from_user.id, error=str(e))
+        await message.answer(
+            "❌ <b>Произошла ошибка при проверке статуса подписки.</b>\n\n"
+            "🔄 <b>Попробуйте позже или обратитесь к администратору.</b>",
+            parse_mode="HTML",
+            reply_markup=main_menu()
+        ) 

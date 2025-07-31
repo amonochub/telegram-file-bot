@@ -16,7 +16,18 @@ from typing import Optional, Dict, Any
 import decimal
 import structlog
 
-from app.services.rates_cache import get_rate as cached_cbr_rate, has_rate, save_pending_calc, get_all_pending, remove_pending
+from app.services.rates_cache import (
+    get_rate as cached_cbr_rate, 
+    has_rate, 
+    save_pending_calc, 
+    get_all_pending, 
+    remove_pending,
+    add_subscriber,
+    remove_subscriber,
+    get_subscribers,
+    is_subscriber,
+    toggle_subscription
+)
 from app.services.cbr_notifier import CBRNotificationService
 from app.config import settings
 
@@ -146,7 +157,7 @@ class CBRRateService:
                         result_message = self._format_calc_result(currency, amount, rate, commission)
                         
                         # Отправляем результат пользователю
-                        await self.bot.send_message(
+                        await self.send_message_safe(
                             user_id, 
                             result_message, 
                             parse_mode="HTML"
@@ -170,7 +181,7 @@ class CBRRateService:
                             "📅 <b>Попробуйте запросить расчёт позже.</b>"
                         )
                         
-                        await self.bot.send_message(
+                        await self.send_message_safe(
                             user_id,
                             error_message,
                             parse_mode="HTML"
@@ -341,7 +352,18 @@ class CBRRateService:
                         f"💱 <b>{currency}:</b> {rate:.4f} ₽"
                     )
                     
-                    await self.bot.send_message(user_id, message, parse_mode="HTML")
+                    # Отправляем сообщение пользователю, который запросил курс
+                    await self.send_message_safe(user_id, message, parse_mode="HTML")
+                    
+                    # Уведомляем всех подписчиков о появлении курса
+                    general_message = (
+                        f"🚨 <b>КУРС ЦБ НА ЗАВТРА ОПУБЛИКОВАН!</b>\n\n"
+                        f"📅 <b>Дата:</b> {tomorrow:%d.%m.%Y}\n"
+                        f"💱 <b>{currency}:</b> {rate:.4f} ₽\n\n"
+                        f"⏰ <b>Время публикации:</b> {dt.datetime.now().strftime('%H:%M')}"
+                    )
+                    
+                    await self.notify_all_subscribers(general_message, parse_mode="HTML")
                     
                     # Обрабатываем отложенные расчёты для этой даты
                     rates = {currency: rate}
@@ -391,10 +413,7 @@ class CBRRateService:
             "🔄 <b>Попробуйте запросить курс позже или обратитесь к официальному сайту ЦБ.</b>"
         )
         
-        try:
-            await self.bot.send_message(user_id, timeout_message, parse_mode="HTML")
-        except Exception as e:
-            log.error("cbr_timeout_notification_failed", user_id=user_id, error=str(e))
+        await self.send_message_safe(user_id, timeout_message, parse_mode="HTML")
         
         # Удаляем задачу из словаря
         if subscription_key in self._subscription_tasks:
@@ -431,6 +450,147 @@ class CBRRateService:
         
         self._subscription_tasks.clear()
         log.info("cbr_service_cleanup_complete")
+
+    async def add_subscriber(self, user_id: int) -> bool:
+        """
+        Добавляет пользователя в список подписчиков.
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            True если добавлен успешно
+        """
+        try:
+            result = await add_subscriber(user_id)
+            if result:
+                log.info("cbr_service_subscriber_added", user_id=user_id)
+            return result
+        except Exception as e:
+            log.error("cbr_service_add_subscriber_error", user_id=user_id, error=str(e))
+            return False
+    
+    async def remove_subscriber(self, user_id: int) -> bool:
+        """
+        Удаляет пользователя из списка подписчиков.
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            True если удалён успешно
+        """
+        try:
+            result = await remove_subscriber(user_id)
+            if result:
+                log.info("cbr_service_subscriber_removed", user_id=user_id)
+            return result
+        except Exception as e:
+            log.error("cbr_service_remove_subscriber_error", user_id=user_id, error=str(e))
+            return False
+    
+    async def is_subscriber(self, user_id: int) -> bool:
+        """
+        Проверяет, является ли пользователь подписчиком.
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            True если пользователь подписан
+        """
+        try:
+            return await is_subscriber(user_id)
+        except Exception as e:
+            log.error("cbr_service_check_subscriber_error", user_id=user_id, error=str(e))
+            return False
+    
+    async def toggle_subscription(self, user_id: int) -> Dict[str, Any]:
+        """
+        Переключает подписку пользователя.
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            Словарь с результатом операции
+        """
+        try:
+            result = await toggle_subscription(user_id)
+            log.info("cbr_service_toggle_subscription", user_id=user_id, action=result["action"])
+            return result
+        except Exception as e:
+            log.error("cbr_service_toggle_subscription_error", user_id=user_id, error=str(e))
+            return {
+                "subscribed": False,
+                "action": "error",
+                "message": "❌ <b>Произошла ошибка при изменении подписки.</b>"
+            }
+    
+    async def send_message_safe(self, user_id: int, message: str, **kwargs) -> bool:
+        """
+        Безопасная отправка сообщения с обработкой ошибок.
+        
+        Args:
+            user_id: ID пользователя
+            message: Текст сообщения
+            **kwargs: Дополнительные параметры для send_message
+            
+        Returns:
+            True если сообщение отправлено успешно, False если ошибка
+        """
+        if not self.bot:
+            log.error("cbr_send_message_no_bot", user_id=user_id)
+            return False
+        
+        try:
+            await self.bot.send_message(user_id, message, **kwargs)
+            return True
+        except Exception as e:
+            log.error("cbr_send_message_error", user_id=user_id, error=str(e))
+            
+            # Если пользователь заблокировал бота или удалил его
+            if "bot was blocked" in str(e).lower() or "user not found" in str(e).lower():
+                log.warning("cbr_user_blocked_or_deleted", user_id=user_id)
+                # Удаляем пользователя из подписчиков
+                await self.remove_subscriber(user_id)
+            
+            return False
+    
+    async def notify_all_subscribers(self, message: str, **kwargs) -> Dict[str, int]:
+        """
+        Отправляет уведомление всем подписчикам.
+        
+        Args:
+            message: Текст сообщения
+            **kwargs: Дополнительные параметры для send_message
+            
+        Returns:
+            Словарь с результатами: {"sent": int, "failed": int, "total": int}
+        """
+        try:
+            subscribers = await get_subscribers()
+            sent = 0
+            failed = 0
+            
+            for user_id in subscribers:
+                if await self.send_message_safe(user_id, message, **kwargs):
+                    sent += 1
+                else:
+                    failed += 1
+            
+            result = {
+                "sent": sent,
+                "failed": failed,
+                "total": len(subscribers)
+            }
+            
+            log.info("cbr_notify_all_subscribers", **result)
+            return result
+            
+        except Exception as e:
+            log.error("cbr_notify_all_subscribers_error", error=str(e))
+            return {"sent": 0, "failed": 0, "total": 0}
 
 
 # Глобальный экземпляр сервиса
