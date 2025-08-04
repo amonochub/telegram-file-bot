@@ -101,13 +101,8 @@ async def handle_document_received(message: Message, state: Optional[FSMContext]
         with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{message.document.file_name}") as temp_file:
             temp_path = temp_file.name
         await message.bot.download_file(file_info.file_path, temp_path)
-        # auth_success = await google_ai_service.authenticate_google() # Removed Google Drive authentication
-        # if not auth_success: # Removed Google Drive authentication
-        #     await processing_msg.edit_text("❌ Ошибка подключения к Google Drive") # Removed Google Drive authentication
-        #     return # Removed Google Drive authentication
-        # file_id = await google_ai_service.upload_document( # Removed Google Drive authentication
-        #     temp_path, message.document.file_name # Removed Google Drive authentication
-        # ) # Removed Google Drive authentication
+        # Removed Google Drive authentication code
+        pass
         # if not file_id: # Removed Google Drive authentication
         #     await processing_msg.edit_text("❌ Ошибка загрузки на Google Drive") # Removed Google Drive authentication
         #     return # Removed Google Drive authentication
@@ -143,30 +138,32 @@ async def handle_document_received(message: Message, state: Optional[FSMContext]
                     f"💰 **Валюты:** {', '.join(analysis_result.get('currencies', []))}\n"  # Placeholder for AI analysis
                 )  # Placeholder for AI analysis
             elif doc_type == "assignment":  # Placeholder for AI analysis
-                result_text += (  # Placeholder for AI analysis
-                    f"📋 **Поручение:** {analysis_result.get('assignment_number', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"📅 **Дата:** {analysis_result.get('assignment_date', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"🏭 **Экспортер:** {analysis_result.get('exporter_name', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"🧾 **Инвойс:** {analysis_result.get('invoice_number', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"💵 **Сумма:** {analysis_result.get('exchange_amount', 'н/д')} {analysis_result.get('currency', '')}\n"  # Placeholder for AI analysis
-                    f"💰 **Вознаграждение:** {analysis_result.get('agent_fee', 'н/д')} ₽\n"  # Placeholder for AI analysis
+                result_text += (
+                    f"📋 **Поручение:** {analysis_result.get('assignment_number', 'н/д')}\n"
+                    f"📅 **Дата:** {analysis_result.get('assignment_date', 'н/д')}\n"
+                    f"🏭 **Экспортер:** {analysis_result.get('exporter_name', 'н/д')}\n"
+                    f"🧾 **Инвойс:** {analysis_result.get('invoice_number', 'н/д')}\n"
+                    f"💵 **Сумма:** {analysis_result.get('exchange_amount', 'н/д')} "
+                    f"{analysis_result.get('currency', '')}\n"
+                    f"💰 **Вознаграждение:** {analysis_result.get('agent_fee', 'н/д')} ₽\n"
                 )  # Placeholder for AI analysis
-            elif doc_type == "report":  # Placeholder for AI analysis
-                result_text += (  # Placeholder for AI analysis
-                    f"📋 **Акт-отчет:** {analysis_result.get('report_number', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"📅 **Дата:** {analysis_result.get('report_date', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"🔗 **Поручение:** {analysis_result.get('assignment_number', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"🏭 **Экспортер:** {analysis_result.get('exporter_name', 'н/д')}\n"  # Placeholder for AI analysis
-                    f"💰 **Сумма услуги:** {analysis_result.get('service_amount_rub', 'н/d')} ₽\n"  # Placeholder for AI analysis
+            elif doc_type == "report":
+                result_text += (
+                    f"📋 **Акт-отчет:** {analysis_result.get('report_number', 'н/д')}\n"
+                    f"📅 **Дата:** {analysis_result.get('report_date', 'н/д')}\n"
+                    f"🔗 **Поручение:** {analysis_result.get('assignment_number', 'н/д')}\n"
+                    f"🏭 **Экспортер:** {analysis_result.get('exporter_name', 'н/д')}\n"
+                    f"💰 **Сумма услуги:** {analysis_result.get('service_amount_rub', 'н/d')} ₽\n"
                 )  # Placeholder for AI analysis
-            builder = InlineKeyboardBuilder()  # Placeholder for AI analysis
-            builder.button(  # Placeholder for AI analysis
-                text="🔍 Проверить соответствие",
-                callback_data="verify_documents",  # Placeholder for AI analysis
-            )  # Placeholder for AI analysis
+            builder = InlineKeyboardBuilder()
             builder.button(
-                text="📎 Загрузить еще документ", callback_data="ai_check_menu"
-            )  # Placeholder for AI analysis
+                text="🔍 Проверить соответствие",
+                callback_data="verify_documents",
+            )
+            builder.button(
+                text="📎 Загрузить еще документ",
+                callback_data="ai_check_menu"
+            )
             builder.adjust(1)  # Placeholder for AI analysis
             await processing_msg.edit_text(  # Placeholder for AI analysis
                 result_text,
@@ -200,7 +197,9 @@ async def verify_documents(callback: CallbackQuery):
             report_data,  # Placeholder for AI verification
         )  # Placeholder for AI verification
         status_icons = {"success": "✅", "warning": "⚠️", "error": "❌"}  # Placeholder for AI verification
-        result_text = f"{status_icons[analysis_result['status']]} **Результат проверки**\n\n"  # Placeholder for AI verification  # Placeholder for AI verification  # Placeholder for AI verification
+        result_text = (
+            f"{status_icons[analysis_result['status']]} **Результат проверки**\n\n"
+        )
         if analysis_result["checks"]:  # Placeholder for AI verification
             result_text += "📋 **Выполненные проверки:**\n"  # Placeholder for AI verification
             for check in analysis_result["checks"]:  # Placeholder for AI verification
