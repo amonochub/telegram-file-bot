@@ -25,7 +25,7 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
     # Bot
-    bot_token: str = Field(..., validation_alias="BOT_TOKEN")
+    bot_token: str = Field(default="", validation_alias="BOT_TOKEN")
     allowed_user_id: Optional[str] = Field(None, validation_alias="ALLOWED_USER_ID")
 
     @property
@@ -49,12 +49,12 @@ class Settings(BaseSettings):
 
     def is_user_allowed(self, user_id: int) -> bool:
         """Проверяет, разрешен ли доступ пользователю"""
-        if not self.allowed_user_ids:  # Если список пустой - доступ разрешен всем
+        if not self.allowed_user_ids:  # Если список пустой - доступ запрещен всем
             logging.warning(
                 "SECURITY WARNING: No allowed users specified in ALLOWED_USER_ID. "
-                "Bot is open to all users. Consider setting ALLOWED_USER_ID for production use."
+                "Access denied by default. Set ALLOWED_USER_ID for production use."
             )
-            return True
+            return False  # По умолчанию запрещаем доступ для безопасности
         return UserId(user_id) in self.allowed_user_ids
 
     # Yandex.Disk
@@ -95,6 +95,27 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = Field(None, validation_alias="GEMINI_API_KEY")
 
 
-# Создаем глобальный экземпляр настроек
-# Pydantic автоматически загрузит значения из переменных окружения
-settings = Settings()
+# Создаем глобальный экземпляр настроек через функцию для lazy initialization
+# Это предотвращает ValidationError при импорте модуля без переменных окружения
+_settings: Optional[Settings] = None
+
+
+def get_settings() -> Settings:
+    """
+    Получает экземпляр настроек с lazy initialization.
+    Создает настройки только при первом обращении.
+    """
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+
+# Для обратной совместимости создаем свойство settings
+class SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings(), name)
+
+
+# Создаем экземпляр прокси для обратной совместимости
+settings = SettingsProxy()
