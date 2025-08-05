@@ -57,7 +57,10 @@ class CBRRateService:
             requested_tomorrow = requested_date == tomorrow
 
             rate = await cached_cbr_rate(
-                requested_date, currency, cache_only=False, requested_tomorrow=requested_tomorrow
+                BusinessDate(requested_date),
+                CurrencyCode(currency),
+                cache_only=False,
+                requested_tomorrow=requested_tomorrow
             )
 
             if rate is not None:
@@ -142,7 +145,7 @@ class CBRRateService:
                         await self.send_message_safe(user_id, result_message, parse_mode="HTML")
 
                         # Удаляем отложенный расчёт
-                        await remove_pending(user_id, target_date)
+                        await remove_pending(user_id, BusinessDate(target_date))
 
                         log.info(
                             "cbr_pending_calc_processed",
@@ -162,7 +165,7 @@ class CBRRateService:
                         await self.send_message_safe(user_id, error_message, parse_mode="HTML")
 
                         # Удаляем отложенный расчёт
-                        await remove_pending(user_id, target_date)
+                        await remove_pending(user_id, BusinessDate(target_date))
 
                         log.warning(
                             "cbr_pending_calc_currency_not_found",

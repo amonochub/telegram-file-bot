@@ -29,6 +29,7 @@ log = structlog.get_logger(__name__)
 # --- Настройки ---
 from app.config import settings
 from app.keyboards.menu import main_menu
+from app.utils.types import BusinessDate
 
 router = Router()
 
@@ -51,7 +52,7 @@ async def fetch_cbr_rate(currency: str, for_date: dt.date) -> decimal.Decimal | 
 
     TODO: удалить после обновления тестов.
     """
-    from app.utils.types import BusinessDate, CurrencyCode
+    from app.utils.types import CurrencyCode
     business_date = BusinessDate(for_date)
     currency_code = CurrencyCode(currency)
     return await cached_cbr_rate(business_date, currency_code, requested_tomorrow=False)
@@ -60,7 +61,7 @@ async def fetch_cbr_rate(currency: str, for_date: dt.date) -> decimal.Decimal | 
 async def safe_fetch_rate(currency: str, date: dt.date, requested_tomorrow: bool = False) -> decimal.Decimal | None:
     """Legacy-функция для обратной совместимости"""
     try:
-        from app.utils.types import BusinessDate, CurrencyCode
+        from app.utils.types import CurrencyCode
         business_date = BusinessDate(date)
         currency_code = CurrencyCode(currency)
         rate = await cached_cbr_rate(business_date, currency_code, requested_tomorrow=requested_tomorrow)
@@ -259,7 +260,7 @@ async def input_commission(msg: Message, state: FSMContext):
         else:
             # Курс не найден - сохраняем отложенный расчёт
             tomorrow = dt.date.today() + dt.timedelta(days=1)
-            saved = await cbr_service.save_pending_calc(msg.chat.id, tomorrow, data["currency"], data["amount"], pct)
+            saved = await cbr_service.save_pending_calc(msg.chat.id, BusinessDate(tomorrow), data["currency"], data["amount"], pct)
 
             if saved:
                 await msg.answer(

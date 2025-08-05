@@ -6,7 +6,7 @@ Enhanced Analyzer Service
 import re
 import json
 from collections import defaultdict, Counter
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, TypedDict
 from dataclasses import dataclass
 from datetime import datetime, date
 import structlog
@@ -15,6 +15,23 @@ from app.utils.types import CurrencyCode, Amount
 from app.services.analyzer import extract_parameters as basic_extract
 
 log = structlog.get_logger(__name__)
+
+
+class FinancialSummary(TypedDict):
+    """Структура для финансового анализа"""
+    currencies_found: List[str]
+    amounts_found: List[Dict[str, Any]]
+    total_amounts_by_currency: Dict[str, float]
+    accounts_count: int
+    ibans_count: int
+
+
+class DateAnalysis(TypedDict):
+    """Структура для анализа дат"""
+    dates_count: int
+    unique_dates: List[str]
+    date_range: Optional[Dict[str, Any]]
+    parsed_dates: List[Dict[str, Any]]
 
 
 @dataclass
@@ -28,8 +45,8 @@ class AnalysisResult:
     document_type: Optional[str] = None
     confidence_score: float = 0.0
     currency_operations: List[Dict[str, Any]] = None
-    date_analysis: Dict[str, Any] = None
-    financial_summary: Dict[str, Any] = None
+    date_analysis: Optional[DateAnalysis] = None
+    financial_summary: Optional[FinancialSummary] = None
     
     # Метаданные
     processing_time: float = 0.0
@@ -192,9 +209,9 @@ class EnhancedAnalyzer:
         
         return None
     
-    def _analyze_financial_data(self, data: Dict[str, List[str]], text: str) -> Dict[str, Any]:
+    def _analyze_financial_data(self, data: Dict[str, List[str]], text: str) -> FinancialSummary:
         """Анализирует финансовые данные"""
-        summary = {
+        summary: FinancialSummary = {
             "currencies_found": [],
             "amounts_found": [],
             "total_amounts_by_currency": {},
@@ -221,18 +238,21 @@ class EnhancedAnalyzer:
                     else:
                         amount_value = 0.0
                     
-                    if currency not in summary["currencies_found"]:
-                        summary["currencies_found"].append(currency)
+                    currencies_found = summary["currencies_found"]
+                    if currency not in currencies_found:
+                        currencies_found.append(currency)
                     
-                    summary["amounts_found"].append({
+                    amounts_found = summary["amounts_found"]
+                    amounts_found.append({
                         "amount": amount_value,
                         "currency": currency,
                         "original": amount_str
                     })
                     
-                    if currency not in summary["total_amounts_by_currency"]:
-                        summary["total_amounts_by_currency"][currency] = 0
-                    summary["total_amounts_by_currency"][currency] += amount_value
+                    total_amounts = summary["total_amounts_by_currency"]
+                    if currency not in total_amounts:
+                        total_amounts[currency] = 0
+                    total_amounts[currency] += amount_value
                     
             except Exception as e:
                 log.warning("financial_analysis_item_failed", item=amount_str, error=str(e))
@@ -256,7 +276,7 @@ class EnhancedAnalyzer:
             for keyword in keywords:
                 if keyword in text_lower:
                     # Ищем ближайшие валютные суммы
-                    nearby_amounts = []
+                    nearby_amounts: list[str] = []
                     for amount in data.get("currency_amount", []):
                         operations.append({
                             "type": op_type,
@@ -267,11 +287,11 @@ class EnhancedAnalyzer:
         
         return operations
     
-    def _analyze_dates(self, data: Dict[str, List[str]]) -> Dict[str, Any]:
+    def _analyze_dates(self, data: Dict[str, List[str]]) -> DateAnalysis:
         """Анализирует даты в документе"""
         dates = data.get("date", [])
         
-        analysis = {
+        analysis: DateAnalysis = {
             "dates_count": len(dates),
             "unique_dates": list(set(dates)),
             "date_range": None,
@@ -320,12 +340,12 @@ class EnhancedAnalyzer:
         key_bonus = key_found * 0.1
         
         # Штраф за слишком короткий или слишком длинный текст
-        length_penalty = 0
+        length_penalty = 0.0
         if text_length < 10:
             length_penalty = 0.3
         elif text_length > 10000:
             length_penalty = 0.1
-        
+
         final_confidence = max(0.0, min(1.0, base_confidence + key_bonus - length_penalty))
         
         return round(final_confidence, 2)

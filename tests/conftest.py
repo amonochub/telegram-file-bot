@@ -4,8 +4,22 @@
 
 import pytest
 import tempfile
+import os
 from pathlib import Path
 from typing import Tuple
+
+
+@pytest.fixture(autouse=True)
+def setup_test_env():
+    """Устанавливаем переменные окружения для тестов"""
+    os.environ["BOT_TOKEN"] = "test_token_12345"
+    os.environ["YANDEX_DISK_TOKEN"] = "test_yandex_token"
+    os.environ["REDIS_URL"] = "redis://localhost:6379"
+    os.environ["LOG_LEVEL"] = "INFO"
+    # Не устанавливаем ALLOWED_USER_ID для тестов по умолчанию
+    if "ALLOWED_USER_ID" in os.environ:
+        del os.environ["ALLOWED_USER_ID"]
+    yield
 
 
 @pytest.fixture

@@ -90,7 +90,7 @@ async def has_rate(date: BusinessDate) -> bool:
         return False
 
 
-async def _fetch_rates_from_api(date: BusinessDate) -> Tuple[Dict[CurrencyCode, float], BusinessDate]:
+async def _fetch_rates_from_api(date: BusinessDate) -> Tuple[Dict[str, float], BusinessDate]:
     """
     Запрашивает курсы валют с сайта ЦБ для указанной даты.
 
@@ -291,7 +291,7 @@ async def _parse_rates(xml_text: str) -> Tuple[Dict[str, float], BusinessDate]:
                         log.error("cbr_try_parse_error", error=str(e))
 
     log.info("cbr_parsing_complete", currencies_found=list(result.keys()), total_rates=len(result))
-    return result, real_date
+    return result, BusinessDate(real_date)
 
 
 async def get_rate(
