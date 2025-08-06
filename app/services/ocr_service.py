@@ -29,17 +29,37 @@ def run_ocr(src: Path) -> Tuple[Path, str]:
     sidecar = Path(tempfile.mktemp(suffix=".txt"))
 
     try:
-        ocrmypdf.ocr(
-            src,
-            dst_pdf,
-            language="rus+eng",
-            skip_text=True,  # если текст уже есть – не трогаем
-            deskew=False,  # не крутим и не «чистим» страницы
-            rotate_pages=False,
-            remove_background=False,
-            sidecar=str(sidecar),  # <— сюда кладётся plain-text
-            progress_bar=False,
-        )
+        # Первая попытка с output_type='pdf' для обхода проблем с Ghostscript
+        try:
+            ocrmypdf.ocr(
+                src,
+                dst_pdf,
+                language="rus+eng",
+                skip_text=True,  # если текст уже есть – не трогаем
+                deskew=False,  # не крутим и не «чистим» страницы
+                rotate_pages=False,
+                remove_background=False,
+                sidecar=str(sidecar),  # <— сюда кладётся plain-text
+                progress_bar=False,
+                output_type='pdf',  # помогает избежать проблем с Ghostscript
+            )
+        except Exception as e:
+            log.warning("ocr_first_attempt_failed", error=str(e))
+            # Fallback: force OCR с сохранением output_type
+            ocrmypdf.ocr(
+                src,
+                dst_pdf,
+                language="rus+eng",
+                skip_text=True,
+                deskew=False,
+                rotate_pages=False,
+                remove_background=False,
+                sidecar=str(sidecar),
+                progress_bar=False,
+                force_ocr=True,  # принудительный OCR
+                output_type='pdf',  # сохраняем тип вывода
+            )
+        
         text = sidecar.read_text(encoding="utf-8", errors="ignore")
         return dst_pdf, text
 

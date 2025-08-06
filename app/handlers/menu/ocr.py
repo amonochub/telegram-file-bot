@@ -100,7 +100,7 @@ async def handle_ocr_document(message: Message, state: FSMContext):
         try:
             from app.services.ocr_service import perform_ocr
 
-            pdf_path, full_text = await perform_ocr(temp_path)
+            pdf_path, full_text = await perform_ocr(str(temp_path))
 
             # Отправляем searchable-PDF
             from aiogram.types import FSInputFile
