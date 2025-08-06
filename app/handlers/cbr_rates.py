@@ -97,22 +97,33 @@ async def process_rate_request(cb: CallbackQuery, state: FSMContext):
         state_data = await state.get_data()
         day_type = state_data.get("day_type", "today")
 
-        # Получаем сервис курсов ЦБ
-        cbr_service = await get_cbr_service(cb.bot)
+        try:
+            # Получаем сервис курсов ЦБ
+            cbr_service = await get_cbr_service(cb.bot)
 
-        if day_type == "tomorrow":
-            # Обработка завтрашнего курса
-            result = await cbr_service.process_tomorrow_rate(cb.from_user.id, currency)
-        else:
-            # Обработка сегодняшнего курса
-            result = await cbr_service.process_today_rate(cb.from_user.id, currency)
+            if day_type == "tomorrow":
+                # Обработка завтрашнего курса
+                result = await cbr_service.process_tomorrow_rate(cb.from_user.id, currency)
+            else:
+                # Обработка сегодняшнего курса
+                result = await cbr_service.process_today_rate(cb.from_user.id, currency)
 
-        # Отправляем результат
-        await cb.message.edit_text(
-            result["message"],
-            parse_mode="HTML",
-            reply_markup=main_menu(),
-        )
+            # Отправляем результат
+            await cb.message.edit_text(
+                result["message"],
+                parse_mode="HTML",
+                reply_markup=main_menu(),
+            )
+
+        except Exception as e:
+            log.error("cbr_rate_error", user_id=cb.from_user.id, currency=currency, day_type=day_type, error=str(e))
+            await cb.message.edit_text(
+                "❌ <b>Произошла внутренняя ошибка.</b>\n\n"
+                "🔧 <b>Обратитесь к администратору.</b>\n\n"
+                "💡 <b>Попробуйте позже или выберите другую валюту.</b>",
+                parse_mode="HTML",
+                reply_markup=main_menu(),
+            )
 
         # Очищаем состояние
         await state.clear()
@@ -133,22 +144,33 @@ async def direct_currency_input(msg: Message, state: FSMContext):
     state_data = await state.get_data()
     day_type = state_data.get("day_type", "today")
 
-    # Получаем сервис курсов ЦБ
-    cbr_service = await get_cbr_service(msg.bot)
+    try:
+        # Получаем сервис курсов ЦБ
+        cbr_service = await get_cbr_service(msg.bot)
 
-    if day_type == "tomorrow":
-        # Обработка завтрашнего курса
-        result = await cbr_service.process_tomorrow_rate(msg.from_user.id, currency)
-    else:
-        # Обработка сегодняшнего курса
-        result = await cbr_service.process_today_rate(msg.from_user.id, currency)
+        if day_type == "tomorrow":
+            # Обработка завтрашнего курса
+            result = await cbr_service.process_tomorrow_rate(msg.from_user.id, currency)
+        else:
+            # Обработка сегодняшнего курса
+            result = await cbr_service.process_today_rate(msg.from_user.id, currency)
 
-    # Отправляем результат
-    await msg.answer(
-        result["message"],
-        parse_mode="HTML",
-        reply_markup=main_menu(),
-    )
+        # Отправляем результат
+        await msg.answer(
+            result["message"],
+            parse_mode="HTML",
+            reply_markup=main_menu(),
+        )
+
+    except Exception as e:
+        log.error("cbr_direct_rate_error", user_id=msg.from_user.id, currency=currency, day_type=day_type, error=str(e))
+        await msg.answer(
+            "❌ <b>Произошла внутренняя ошибка.</b>\n\n"
+            "🔧 <b>Обратитесь к администратору.</b>\n\n"
+            "💡 <b>Попробуйте позже или выберите другую валюту.</b>",
+            parse_mode="HTML",
+            reply_markup=main_menu(),
+        )
 
     # Очищаем состояние
     await state.clear()

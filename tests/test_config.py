@@ -30,7 +30,7 @@ class TestSettings:
             assert settings.max_file_size == 100_000_000
             assert settings.cache_ttl == 3600
             assert settings.max_buffer_size == 100
-            assert settings.cbr_api_url == "https://www.cbr-xml-daily.ru/daily_json.js"
+            assert settings.cbr_api_url == "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}"
             assert settings.yandex_root_path == "disk:/1-Sh23SGxNjxYQ"
 
     def test_upload_dir_path(self):

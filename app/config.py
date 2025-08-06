@@ -88,7 +88,10 @@ class Settings(BaseSettings):
     max_buffer_size: int = Field(100, validation_alias="MAX_BUFFER_SIZE")
 
     # CBR API
-    cbr_api_url: str = Field("https://www.cbr-xml-daily.ru/daily_json.js", validation_alias="CBR_API_URL")
+    cbr_api_url: str = Field(
+        "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}",
+        validation_alias="CBR_API_URL"
+    )
 
     # Yandex.Disk root path
     yandex_root_path: str = Field("disk:/1-Sh23SGxNjxYQ", validation_alias="YANDEX_ROOT_PATH")

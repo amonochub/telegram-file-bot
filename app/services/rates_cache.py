@@ -22,7 +22,6 @@ from app.utils.types import RateValue, CurrencyCode, CacheKey, BusinessDate, Api
 
 log = structlog.get_logger(__name__)
 
-CBR_URL: Final[str] = "https://www.cbr.ru/scripts/XML_daily.asp?date_req={for_date}"
 ISO2CBR: Final[Dict[CurrencyCode, str]] = {
     CurrencyCode("USD"): "R01235",
     CurrencyCode("EUR"): "R01239",
@@ -111,7 +110,7 @@ async def _fetch_rates_from_api(date: BusinessDate) -> Tuple[Dict[str, float], B
 
     # сетевой запрос - используем правильный формат даты DD/MM/YYYY
     date_req = actual_date.strftime("%d/%m/%Y")
-    url = CBR_URL.format(for_date=date_req)
+    url = settings.cbr_api_url.format(for_date=date_req)
     log.info("cbr_request", url=url, requested_date=str(date), actual_date=str(actual_date))
 
     try:
@@ -348,7 +347,7 @@ async def get_rate(
 
     # сетевой запрос - используем правильный формат даты DD/MM/YYYY
     date_req = actual_date.strftime("%d/%m/%Y")
-    url = CBR_URL.format(for_date=date_req)
+    url = settings.cbr_api_url.format(for_date=date_req)
     log.info("cbr_request", url=url, requested_date=str(date), actual_date=str(actual_date))
     try:
         async with aiohttp.ClientSession() as session:
